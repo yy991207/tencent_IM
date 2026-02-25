@@ -7,8 +7,19 @@ import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft } from 'react-icons/fi';
 interface CommunityChatViewProps {
   groupID?: string;           // 社群 ID
   groupName?: string;         // 社群名称
+  groupAvatarUrl?: string;    // 社群头像 URL（用于话题收藏入口展示）
   onBack?: () => void;        // 返回按钮回调
   embedded?: boolean;         // 嵌入模式：不展示顶部返回头，避免影响外层会话布局
+  openCommentDetailMessageId?: string | null; // 外部触发打开评论详情
+  onTopicBookmarkChange?: (topic: {
+    groupID?: string;
+    groupName: string;
+    groupAvatarUrl?: string;
+    messageId: string;
+    title: string;
+    preview: string;
+    time: Date;
+  } | null, messageId?: string) => void;
 }
 
 interface CommentItem {
@@ -33,9 +44,13 @@ interface Message {
  * 支持留言板功能，用户可以在右下角点击"+"按钮发送留言
  */
 export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
+  groupID,
   groupName = '社群',
+  groupAvatarUrl,
   onBack,
   embedded = false,
+  openCommentDetailMessageId,
+  onTopicBookmarkChange,
 }) => {
   const [showMessageInput, setShowMessageInput] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -58,6 +73,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (!openCommentDetailMessageId) return;
+    setCommentDetailMessageId(openCommentDetailMessageId);
+    setActiveCommentMessageId(openCommentDetailMessageId);
+  }, [openCommentDetailMessageId]);
 
   // 处理发送留言
   const handleSendMessage = () => {
@@ -195,13 +216,36 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             msg.id === messageId ? { ...msg, bookmarked: false } : msg
           )
         );
+
+        onTopicBookmarkChange?.(null, messageId);
       } else {
         newSet.add(messageId);
         // 添加收藏
         setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === messageId ? { ...msg, bookmarked: true } : msg
-          )
+          msgs.map((msg) => {
+            if (msg.id !== messageId) return msg;
+
+            const postTitle = `${msg.sender}：${msg.content}`;
+            const title = postTitle.length > 16 ? `${postTitle.slice(0, 16)}...` : postTitle;
+            const comments = msg.comments || [];
+            const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
+            const preview = lastComment
+              ? `${lastComment.sender}：${lastComment.content}`
+              : '暂无评论';
+            const time = lastComment?.time || msg.time;
+
+            onTopicBookmarkChange?.({
+              groupID,
+              groupName,
+              groupAvatarUrl,
+              messageId,
+              title,
+              preview,
+              time,
+            });
+
+            return { ...msg, bookmarked: true };
+          })
         );
       }
       return newSet;
@@ -263,7 +307,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         ) : (
           messages.map((msg) => {
             const isLiked = likedMessages.has(msg.id);
-            const isBookmarked = bookmarkedMessages.has(msg.id);
+            const isBookmarked = bookmarkedMessages.has(msg.id) || !!msg.bookmarked;
             const likeCount = msg.likes?.length || 0;
             const commentCount = msg.comments?.length || 0;
             const isCommentOpen = activeCommentMessageId === msg.id;

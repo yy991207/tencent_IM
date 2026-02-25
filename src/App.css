@@ -39,6 +39,112 @@ body {
   overflow: hidden;
 }
 
+
+
+.topic-bookmark-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.topic-bookmark-item--inline {
+  margin: 0 6px;
+}
+
+.topic-bookmark-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.dark .topic-bookmark-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.topic-bookmark-avatar {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #e9ecef;
+}
+
+.topic-bookmark-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.topic-bookmark-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #8ec5ff 0%, #3b82f6 100%);
+}
+
+.topic-bookmark-avatar-hash {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  background: #1890ff;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--uikit-theme-light-bg-color-operate);
+}
+
+.dark .topic-bookmark-avatar-hash {
+  border: 2px solid var(--uikit-theme-dark-bg-color-operate);
+}
+
+.topic-bookmark-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.topic-bookmark-time {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #adb5bd;
+  flex-shrink: 0;
+  align-self: flex-start;
+  line-height: 18px;
+}
+
+.topic-bookmark-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--uikit-theme-light-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dark .topic-bookmark-name {
+  color: var(--uikit-theme-dark-text-color-primary);
+}
+
+.topic-bookmark-preview {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #868e96;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dark .conversation-list-panel {
   border-right: 1px solid var(--uikit-theme-dark-stroke-color-primary);
 }

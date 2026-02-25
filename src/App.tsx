@@ -39,7 +39,17 @@ function ChatApp() {
   const [isChatSettingShow, setIsChatSettingShow] = useState(false);
   const [isSearchInChatShow, setIsSearchInChatShow] = useState(false);
   const [showCommunityView, setShowCommunityView] = useState(false);
-  const [currentCommunity, setCurrentCommunity] = useState<{ groupID: string; groupName: string } | null>(null);
+  const [currentCommunity, setCurrentCommunity] = useState<{ groupID: string; groupName: string; groupAvatarUrl?: string } | null>(null);
+  const [openCommunityCommentDetailMessageId, setOpenCommunityCommentDetailMessageId] = useState<string | null>(null);
+  const [topicBookmarks, setTopicBookmarks] = useState<Array<{
+    groupID?: string;
+    groupName: string;
+    groupAvatarUrl?: string;
+    messageId: string;
+    title: string;
+    preview: string;
+    time: Date;
+  }>>([]);
   
   const { language, theme } = useUIKit();
 
@@ -83,6 +93,7 @@ function ChatApp() {
     // 检查是否是社群类型的群组
     const groupProfile = (conversation as any)?.groupProfile;
     const isCommunity = groupProfile?.type === 'Community';
+    const groupAvatarUrl = groupProfile?.avatar || groupProfile?.faceUrl;
 
     return (
       <div
@@ -91,17 +102,90 @@ function ChatApp() {
             setCurrentCommunity({
               groupID: groupProfile.groupID,
               groupName: groupProfile.name || '社群',
+              groupAvatarUrl,
             });
             setShowCommunityView(true);
+            setOpenCommunityCommentDetailMessageId(null);
           } else {
             setShowCommunityView(false);
             setCurrentCommunity(null);
+            setOpenCommunityCommentDetailMessageId(null);
           }
           setActiveConversation(conversation?.conversationID);
         }}
         style={{ cursor: 'pointer' }}
       >
         <ConversationPreview {...props} />
+      </div>
+    );
+  };
+
+  const CustomConversationListContent: React.FC<any> = (props) => {
+    const {
+      children,
+      empty = false,
+      loading = false,
+      error = false,
+      PlaceholderEmptyList,
+      PlaceholderLoading,
+      PlaceholderLoadError,
+      className,
+      style,
+    } = props;
+
+    let content;
+    if (error) {
+      content = PlaceholderLoadError;
+    } else if (loading) {
+      content = PlaceholderLoading;
+    } else if (empty) {
+      content = PlaceholderEmptyList;
+    } else {
+      content = (
+        <>
+          {topicBookmarks.map((t) => (
+            <button
+              key={`${t.groupID || ''}:${t.messageId}`}
+              type="button"
+              className="topic-bookmark-item topic-bookmark-item--inline"
+              onClick={() => {
+                if (!t.groupID) return;
+                setCurrentCommunity({
+                  groupID: t.groupID,
+                  groupName: t.groupName,
+                  groupAvatarUrl: t.groupAvatarUrl,
+                });
+                setShowCommunityView(true);
+                setOpenCommunityCommentDetailMessageId(t.messageId);
+              }}
+            >
+              <div className="topic-bookmark-avatar">
+                {t.groupAvatarUrl ? (
+                  <img className="topic-bookmark-avatar-img" src={t.groupAvatarUrl} alt="" />
+                ) : (
+                  <div className="topic-bookmark-avatar-fallback"></div>
+                )}
+                <div className="topic-bookmark-avatar-hash">#</div>
+              </div>
+              <div className="topic-bookmark-text">
+                <div className="topic-bookmark-name">{t.title}</div>
+                <div className="topic-bookmark-preview">{t.preview}</div>
+              </div>
+              <div className="topic-bookmark-time">
+                {t.time
+                  ? new Date(t.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+                  : ''}
+              </div>
+            </button>
+          ))}
+          {children}
+        </>
+      );
+    }
+
+    return (
+      <div className={className} style={style}>
+        {content}
       </div>
     );
   };
@@ -132,11 +216,13 @@ function ChatApp() {
       {/* 中间列表 会话列表 - 联系人列表 */}
       <div className="conversation-list-panel">
         {activeTab === 'conversations' ? (
-          <ConversationList
-            Preview={(props: ConversationPreviewProps) => (
-              <CustomConversationPreview {...props} />
-            )}
-            onBeforeCreateConversation={(params) => {
+          <>
+            <ConversationList
+              List={CustomConversationListContent}
+              Preview={(props: ConversationPreviewProps) => (
+                <CustomConversationPreview {...props} />
+              )}
+              onBeforeCreateConversation={(params) => {
               // 在创建群组前，根据群组类型自动生成头像
               // params 可能是 string 或 CreateGroupParams 类型，需要类型检查
               if (params && typeof params === 'object' && 'type' in params) {
@@ -153,8 +239,9 @@ function ChatApp() {
                 }
               }
               return params;
-            }}
-          />
+              }}
+            />
+          </>
         ) : (
           <ContactList className="contact-list" />
         )}
@@ -196,6 +283,22 @@ function ChatApp() {
               embedded={true}
               groupID={currentCommunity.groupID}
               groupName={currentCommunity.groupName}
+              groupAvatarUrl={currentCommunity.groupAvatarUrl}
+              openCommentDetailMessageId={openCommunityCommentDetailMessageId}
+              onTopicBookmarkChange={(topic, messageId) => {
+                setOpenCommunityCommentDetailMessageId(null);
+                setTopicBookmarks((prev) => {
+                  if (!topic) {
+                    if (!messageId) return prev;
+                    return prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+                  }
+
+                  const key = `${topic.groupID || ''}:${topic.messageId}`;
+                  const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
+                  if (exists) return prev;
+                  return [topic, ...prev];
+                });
+              }}
             />
           ) : (
             <>
