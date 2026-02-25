@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ConversationList, ConversationPreview } from '@tencentcloud/chat-uikit-react';
+import { ConversationList, ConversationPreview, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft } from 'react-icons/fi';
@@ -39,9 +39,15 @@ interface Message {
   content: string;
   sender: string;
   time: Date;
-  likes?: string[];      // 点赞的用户列表
+  likes?: LikeUser[];      // 点赞的用户列表
   comments?: CommentItem[];
   bookmarked?: boolean;  // 是否已收藏
+}
+
+interface LikeUser {
+  userId: string;
+  userName: string;
+  avatarUrl?: string;
 }
 
 /**
@@ -58,6 +64,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   onCommunitySummaryChange,
   onTopicBookmarkChange,
 }) => {
+  const { loginUserInfo } = useLoginState();
+
   const [showMessageInput, setShowMessageInput] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -145,13 +153,17 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const handleLike = (messageId: string) => {
     setLikedMessages((prev) => {
       const newSet = new Set(prev);
+      const currentUserId = loginUserInfo?.userId || 'current-user';
+      const currentUserName = loginUserInfo?.userName || loginUserInfo?.userId || '我';
+      const currentUserAvatarUrl = loginUserInfo?.avatarUrl;
+
       if (newSet.has(messageId)) {
         newSet.delete(messageId);
         // 取消点赞
         setMessages((msgs) =>
           msgs.map((msg) =>
             msg.id === messageId
-              ? { ...msg, likes: msg.likes?.filter((id) => id !== 'current-user') }
+              ? { ...msg, likes: (msg.likes || []).filter((u) => u.userId !== currentUserId) }
               : msg
           )
         );
@@ -161,13 +173,38 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         setMessages((msgs) =>
           msgs.map((msg) =>
             msg.id === messageId
-              ? { ...msg, likes: [...(msg.likes || []), 'current-user'] }
+              ? {
+                  ...msg,
+                  likes: [
+                    ...(msg.likes || []),
+                    {
+                      userId: currentUserId,
+                      userName: currentUserName,
+                      avatarUrl: currentUserAvatarUrl,
+                    },
+                  ],
+                }
               : msg
           )
         );
       }
       return newSet;
     });
+  };
+
+  const renderLikeInfo = (likeUsers: LikeUser[]) => {
+    if (!likeUsers || likeUsers.length === 0) return null;
+
+    return (
+      <div className="like-info" role="group" aria-label="点赞用户列表">
+        {likeUsers.map((u) => (
+          <span key={u.userId} className="like-pill">
+            <FiThumbsUp className="like-pill-icon" />
+            <span className="like-pill-name">{u.userName}</span>
+          </span>
+        ))}
+      </div>
+    );
   };
 
   const handleToggleComment = (messageId: string) => {
@@ -366,16 +403,31 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     <span className="message-sender">{msg.sender}</span>
                     <span className="message-time">{formatTime(msg.time)}</span>
                   </div>
+
                   <div className="message-bubble">{msg.content}</div>
+                  {renderLikeInfo(msg.likes || [])}
                   <div className="message-interactions">
-                    <button
-                      className={`interaction-btn ${isLiked ? 'liked' : ''}`}
-                      onClick={() => handleLike(msg.id)}
-                      title="点赞"
-                    >
-                      <FiThumbsUp className="interaction-icon" />
-                      {likeCount > 0 && <span className="interaction-count">{likeCount}</span>}
-                    </button>
+                    {isLiked ? (
+                      <button
+                        className="interaction-btn interaction-btn--liked"
+                        onClick={() => handleLike(msg.id)}
+                        title="取消点赞"
+                        type="button"
+                      >
+                        <FiThumbsUp className="interaction-icon" />
+                        {likeCount > 0 && <span className="interaction-count">{likeCount}</span>}
+                      </button>
+                    ) : (
+                      <button
+                        className="interaction-btn"
+                        onClick={() => handleLike(msg.id)}
+                        title="点赞"
+                        type="button"
+                      >
+                        <FiThumbsUp className="interaction-icon" />
+                        {likeCount > 0 && <span className="interaction-count">{likeCount}</span>}
+                      </button>
+                    )}
                     <button
                       className={`interaction-btn ${commentCount > 0 ? 'has-comments' : ''} ${isCommentOpen ? 'active' : ''}`}
                       onClick={() => handleToggleComment(msg.id)}
@@ -479,10 +531,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     </div>
                     <div className="comment-detail-post-content">{msg.content}</div>
                     {hasLikeInfo && (
-                      <div className="comment-detail-like-info">
-                        <FiThumbsUp className="comment-detail-like-icon" />
-                        <span className="comment-detail-like-text">{likeUsers.join('、')}</span>
-                      </div>
+                      <div className="comment-detail-like-info">{renderLikeInfo(likeUsers)}</div>
                     )}
                   </div>
 
@@ -710,6 +759,41 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           line-height: 1.6;
           word-break: break-word;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .like-info {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
+        .like-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: #f5f5f5;
+          border: 1px solid rgba(0, 0, 0, 0.06);
+          color: #333;
+          font-size: 13px;
+          line-height: 1;
+          max-width: 100%;
+        }
+
+        .like-pill-icon {
+          width: 16px;
+          height: 16px;
+          color: #fa8c16;
+          flex-shrink: 0;
+        }
+
+        .like-pill-name {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 220px;
         }
 
         .comment-panel {
@@ -1059,6 +1143,16 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         .interaction-btn:hover {
           background: #f0f0f0;
           color: #666;
+        }
+
+        .interaction-btn--liked {
+          background: #e6f4ff;
+          color: #1677ff;
+        }
+
+        .interaction-btn--liked:hover {
+          background: #bae0ff;
+          color: #1677ff;
         }
 
         .interaction-btn.liked,
