@@ -9,13 +9,20 @@ interface CommunityChatViewProps {
   embedded?: boolean;         // 嵌入模式：不展示顶部返回头，避免影响外层会话布局
 }
 
+interface CommentItem {
+  id: string;
+  content: string;
+  sender: string;
+  time: Date;
+}
+
 interface Message {
   id: string;
   content: string;
   sender: string;
   time: Date;
   likes?: string[];      // 点赞的用户列表
-  comments?: number;     // 评论数量
+  comments?: CommentItem[];
   bookmarked?: boolean;  // 是否已收藏
 }
 
@@ -34,6 +41,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set());
   const [bookmarkedMessages, setBookmarkedMessages] = useState<Set<string>>(new Set());
+  const [activeCommentMessageId, setActiveCommentMessageId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentDetailMessageId, setCommentDetailMessageId] = useState<string | null>(null);
 
   // 滚动到底部
   const scrollToBottom = () => {
@@ -54,7 +64,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       sender: '我',
       time: new Date(),
       likes: [],
-      comments: 0,
+      comments: [],
       bookmarked: false,
     };
 
@@ -92,19 +102,41 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     });
   };
 
-  // 处理评论
-  const handleComment = (msg: Message) => {
-    // 简单实现：弹出输入框让用户输入评论
-    const comment = window.prompt('输入评论内容：');
-    if (comment && comment.trim()) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === msg.id
-            ? { ...m, comments: (m.comments || 0) + 1 }
-            : m
-        )
-      );
-    }
+  const handleToggleComment = (messageId: string) => {
+    setCommentDetailMessageId(null);
+    setActiveCommentMessageId((prev) => (prev === messageId ? null : messageId));
+    setCommentDraft('');
+  };
+
+  const handleSendComment = (messageId: string) => {
+    const content = commentDraft.trim();
+    if (!content) return;
+
+    const newComment: CommentItem = {
+      id: `cmt-${Date.now()}`,
+      content,
+      sender: '我',
+      time: new Date(),
+    };
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? { ...m, comments: [...(m.comments || []), newComment] }
+          : m
+      )
+    );
+    setCommentDraft('');
+  };
+
+  const handleOpenCommentDetail = (messageId: string) => {
+    setCommentDetailMessageId(messageId);
+    setActiveCommentMessageId(messageId);
+    setCommentDraft('');
+  };
+
+  const handleCloseCommentDetail = () => {
+    setCommentDetailMessageId(null);
   };
 
   // 处理转发
@@ -173,7 +205,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             const isLiked = likedMessages.has(msg.id);
             const isBookmarked = bookmarkedMessages.has(msg.id);
             const likeCount = msg.likes?.length || 0;
-            const commentCount = msg.comments || 0;
+            const commentCount = msg.comments?.length || 0;
+            const isCommentOpen = activeCommentMessageId === msg.id;
+            const previewComments = (msg.comments || []).slice(-2);
+            const earlierCount = Math.max(0, (msg.comments || []).length - 2);
 
             return (
               <div key={msg.id} className="message-item">
@@ -196,8 +231,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                       {likeCount > 0 && <span className="interaction-count">{likeCount}</span>}
                     </button>
                     <button
-                      className={`interaction-btn ${commentCount > 0 ? 'has-comments' : ''}`}
-                      onClick={() => handleComment(msg)}
+                      className={`interaction-btn ${commentCount > 0 ? 'has-comments' : ''} ${isCommentOpen ? 'active' : ''}`}
+                      onClick={() => handleToggleComment(msg.id)}
                       title="评论"
                     >
                       <FiMessageSquare className="interaction-icon" />
@@ -222,6 +257,47 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                       )}
                     </button>
                   </div>
+
+                  {isCommentOpen && (
+                    <div className="comment-panel">
+                      {previewComments.length > 0 && (
+                        <div className="comment-preview">
+                          {earlierCount > 0 && (
+                            <button
+                              className="comment-more"
+                              onClick={() => handleOpenCommentDetail(msg.id)}
+                              type="button"
+                            >
+                              查看更早{earlierCount}条回复
+                            </button>
+                          )}
+                          {previewComments.map((c) => (
+                            <div key={c.id} className="comment-item">
+                              <span className="comment-sender">{c.sender}：</span>
+                              <span className="comment-content">{c.content}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="comment-input-row">
+                        <input
+                          className="comment-input"
+                          value={commentDraft}
+                          onChange={(e) => setCommentDraft(e.target.value)}
+                          placeholder="分享你的想法..."
+                        />
+                        <button
+                          className="comment-send"
+                          onClick={() => handleSendComment(msg.id)}
+                          disabled={!commentDraft.trim()}
+                          type="button"
+                        >
+                          发送
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -229,6 +305,79 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {commentDetailMessageId && (
+        <div className="comment-detail-overlay">
+          <div className="comment-detail-panel">
+            <div className="comment-detail-header">
+              <div className="comment-detail-title">评论</div>
+              <button className="comment-detail-close" onClick={handleCloseCommentDetail} type="button">
+                <FiX />
+              </button>
+            </div>
+
+            {(() => {
+              const msg = messages.find((m) => m.id === commentDetailMessageId);
+              if (!msg) return null;
+
+              const likeUsers = msg.likes || [];
+              const hasLikeInfo = likeUsers.length > 0;
+              const allComments = msg.comments || [];
+
+              return (
+                <div className="comment-detail-body">
+                  <div className="comment-detail-post">
+                    <div className="comment-detail-post-header">
+                      <div className="comment-detail-post-sender">{msg.sender}</div>
+                      <div className="comment-detail-post-time">{formatTime(msg.time)}</div>
+                    </div>
+                    <div className="comment-detail-post-content">{msg.content}</div>
+                    {hasLikeInfo && (
+                      <div className="comment-detail-like-info">
+                        <FiThumbsUp className="comment-detail-like-icon" />
+                        <span className="comment-detail-like-text">{likeUsers.join('、')}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="comment-detail-list">
+                    {allComments.length === 0 ? (
+                      <div className="comment-detail-empty">暂无评论</div>
+                    ) : (
+                      allComments.map((c) => (
+                        <div key={c.id} className="comment-detail-item">
+                          <div className="comment-detail-item-header">
+                            <span className="comment-detail-item-sender">{c.sender}</span>
+                            <span className="comment-detail-item-time">{formatTime(c.time)}</span>
+                          </div>
+                          <div className="comment-detail-item-content">{c.content}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="comment-detail-input">
+                    <input
+                      className="comment-input"
+                      value={commentDraft}
+                      onChange={(e) => setCommentDraft(e.target.value)}
+                      placeholder="写下你的评论..."
+                    />
+                    <button
+                      className="comment-send"
+                      onClick={() => handleSendComment(msg.id)}
+                      disabled={!commentDraft.trim()}
+                      type="button"
+                    >
+                      发送
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* 输入弹窗 - 大浮窗样式 */}
       {showMessageInput && (
@@ -417,6 +566,250 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
         }
 
+        .comment-panel {
+          margin-top: 12px;
+          background: #f1f6ff;
+          border: 1px solid rgba(24, 144, 255, 0.18);
+          border-radius: 12px;
+          padding: 12px;
+        }
+
+        .comment-preview {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-bottom: 10px;
+        }
+
+        .comment-more {
+          background: none;
+          border: none;
+          padding: 0;
+          text-align: left;
+          cursor: pointer;
+          color: #1890ff;
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        .comment-item {
+          font-size: 13px;
+          color: #333;
+          line-height: 1.4;
+        }
+
+        .comment-sender {
+          color: #555;
+          font-weight: 600;
+        }
+
+        .comment-content {
+          color: #333;
+        }
+
+        .comment-input-row {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .comment-input {
+          flex: 1;
+          height: 34px;
+          border-radius: 8px;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          padding: 0 12px;
+          background: #fff;
+          font-size: 13px;
+          box-sizing: border-box;
+        }
+
+        .comment-input:focus {
+          outline: none;
+          border-color: #1890ff;
+        }
+
+        .comment-send {
+          height: 34px;
+          padding: 0 14px;
+          border-radius: 8px;
+          border: none;
+          cursor: pointer;
+          background: #1890ff;
+          color: #fff;
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        .comment-send:disabled {
+          background: #d9d9d9;
+          cursor: not-allowed;
+        }
+
+        .comment-detail-overlay {
+          position: absolute;
+          left: 0;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.12);
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
+          z-index: 500;
+        }
+
+        .comment-detail-panel {
+          width: 100%;
+          height: 100%;
+          background: #fff;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .comment-detail-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          border-bottom: 1px solid #f0f0f0;
+          flex-shrink: 0;
+        }
+
+        .comment-detail-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #333;
+        }
+
+        .comment-detail-close {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #666;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .comment-detail-body {
+          flex: 1;
+          overflow: auto;
+          padding: 16px;
+          background: #f5f5f5;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .comment-detail-post {
+          background: #fff;
+          border-radius: 12px;
+          padding: 12px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .comment-detail-post-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+
+        .comment-detail-post-sender {
+          font-size: 14px;
+          font-weight: 600;
+          color: #333;
+        }
+
+        .comment-detail-post-time {
+          font-size: 12px;
+          color: #999;
+        }
+
+        .comment-detail-post-content {
+          font-size: 14px;
+          color: #333;
+          line-height: 1.6;
+          word-break: break-word;
+        }
+
+        .comment-detail-like-info {
+          margin-top: 10px;
+          background: #fff7e6;
+          border: 1px solid #ffe7ba;
+          border-radius: 10px;
+          padding: 8px 10px;
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          color: #8c5a00;
+        }
+
+        .comment-detail-like-icon {
+          width: 16px;
+          height: 16px;
+        }
+
+        .comment-detail-like-text {
+          font-size: 13px;
+          font-weight: 500;
+        }
+
+        .comment-detail-list {
+          background: #fff;
+          border-radius: 12px;
+          padding: 12px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .comment-detail-empty {
+          font-size: 13px;
+          color: #999;
+          padding: 8px 0;
+          text-align: center;
+        }
+
+        .comment-detail-item-header {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+
+        .comment-detail-item-sender {
+          font-size: 13px;
+          font-weight: 600;
+          color: #333;
+        }
+
+        .comment-detail-item-time {
+          font-size: 12px;
+          color: #999;
+        }
+
+        .comment-detail-item-content {
+          font-size: 13px;
+          color: #333;
+          line-height: 1.5;
+          word-break: break-word;
+        }
+
+        .comment-detail-input {
+          margin-top: auto;
+          background: #fff;
+          border-radius: 12px;
+          padding: 12px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+
         /* 消息互动区域 */
         .message-interactions {
           display: flex;
@@ -446,6 +839,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .interaction-btn.liked,
         .interaction-btn.has-comments,
+        .interaction-btn.active,
         .interaction-btn.bookmarked {
           color: #1890ff;
         }
@@ -477,7 +871,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         }
 
         .interaction-btn.liked .interaction-count,
-        .interaction-btn.has-comments .interaction-count {
+        .interaction-btn.has-comments .interaction-count,
+        .interaction-btn.active .interaction-count {
           color: #1890ff;
         }
 
