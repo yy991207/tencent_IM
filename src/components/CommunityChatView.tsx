@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { ConversationList, ConversationPreview } from '@tencentcloud/chat-uikit-react';
+import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft } from 'react-icons/fi';
 
@@ -44,6 +46,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [activeCommentMessageId, setActiveCommentMessageId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [commentDetailMessageId, setCommentDetailMessageId] = useState<string | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareMessageId, setShareMessageId] = useState<string | null>(null);
+  const [shareSearchValue, setShareSearchValue] = useState('');
 
   // 滚动到底部
   const scrollToBottom = () => {
@@ -140,13 +145,42 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   };
 
   // 处理转发
-  const handleShare = () => {
-    // 简单实现：弹出选择框让用户选择转发给谁
-    const target = window.prompt('输入要转发给的联系人或群组名称：');
-    if (target && target.trim()) {
-      alert(`消息已转发给 "${target.trim()}"`);
-      // TODO: 实际项目中这里应该调用 SDK 的转发 API
+  const handleShare = (messageId: string) => {
+    setShareMessageId(messageId);
+    setShareSearchValue('');
+    setIsShareModalOpen(true);
+  };
+
+  const handleCloseShareModal = () => {
+    setIsShareModalOpen(false);
+    setShareMessageId(null);
+    setShareSearchValue('');
+  };
+
+  const handleSelectShareTarget = (conversation: any) => {
+    const name =
+      conversation?.groupProfile?.name ||
+      conversation?.userProfile?.nick ||
+      conversation?.userProfile?.userID ||
+      conversation?.conversationID ||
+      '未知会话';
+    if (shareMessageId) {
+      alert(`消息已转发给 "${name}"`);
     }
+    handleCloseShareModal();
+  };
+
+  const ShareConversationPreview: React.FC<ConversationPreviewProps> = (props) => {
+    const { conversation } = props;
+    return (
+      <div
+        className="share-conversation-item"
+        onClick={() => handleSelectShareTarget(conversation)}
+        style={{ cursor: 'pointer' }}
+      >
+        <ConversationPreview {...props} />
+      </div>
+    );
   };
 
   // 处理收藏
@@ -191,6 +225,32 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             <FiArrowLeft />
           </button>
           <span className="group-name">{groupName}</span>
+        </div>
+      )}
+
+      {isShareModalOpen && (
+        <div className="share-modal-overlay">
+          <div className="share-modal">
+            <div className="share-modal-header">
+              <div className="share-modal-title">转发</div>
+              <button className="share-modal-close" onClick={handleCloseShareModal} type="button">
+                <FiX />
+              </button>
+            </div>
+
+            <div className="share-modal-search">
+              <input
+                className="share-modal-search-input"
+                value={shareSearchValue}
+                onChange={(e) => setShareSearchValue(e.target.value)}
+                placeholder="搜索"
+              />
+            </div>
+
+            <div className="share-modal-body">
+              <ConversationList Preview={(props: ConversationPreviewProps) => <ShareConversationPreview {...props} />} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -240,7 +300,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     </button>
                     <button
                       className="interaction-btn"
-                      onClick={() => handleShare()}
+                      onClick={() => handleShare(msg.id)}
                       title="转发"
                     >
                       <FiShare2 className="interaction-icon" />
@@ -808,6 +868,84 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           gap: 10px;
           align-items: center;
+        }
+
+        .share-modal-overlay {
+          position: absolute;
+          left: 0;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.16);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 600;
+        }
+
+        .share-modal {
+          width: 520px;
+          max-width: calc(100% - 32px);
+          height: 620px;
+          max-height: calc(100% - 32px);
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .share-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 16px;
+          border-bottom: 1px solid #f0f0f0;
+          flex-shrink: 0;
+        }
+
+        .share-modal-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #333;
+        }
+
+        .share-modal-close {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #666;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .share-modal-search {
+          padding: 12px 16px;
+          border-bottom: 1px solid #f5f5f5;
+          flex-shrink: 0;
+        }
+
+        .share-modal-search-input {
+          width: 100%;
+          height: 36px;
+          border-radius: 8px;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          padding: 0 12px;
+          box-sizing: border-box;
+          font-size: 13px;
+          outline: none;
+        }
+
+        .share-modal-search-input:focus {
+          border-color: #1890ff;
+        }
+
+        .share-modal-body {
+          flex: 1;
+          overflow: auto;
         }
 
         /* 消息互动区域 */
