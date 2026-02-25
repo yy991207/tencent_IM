@@ -18,6 +18,7 @@ import {
   useConversationListState,
 } from "@tencentcloud/chat-uikit-react";
 import { IconChat, IconUsergroup, IconBulletpoint, IconSearch } from "@tencentcloud/uikit-base-component-react";
+import { generateGroupAvatarByType, type GroupType } from './utils/groupAvatar';
 import './App.css';
 
 function App() {
@@ -95,7 +96,30 @@ function ChatApp() {
 
       {/* 中间列表 会话列表 - 联系人列表 */}
       <div className="conversation-list-panel">
-        {activeTab === 'conversations' ? <ConversationList /> : <ContactList className="contact-list" />}
+        {activeTab === 'conversations' ? (
+          <ConversationList
+            onBeforeCreateConversation={(params) => {
+              // 在创建群组前，根据群组类型自动生成头像
+              // params 可能是 string 或 CreateGroupParams 类型，需要类型检查
+              if (params && typeof params === 'object' && 'type' in params) {
+                const createParams = params as any;
+                if (createParams.type === 'GROUP' && createParams.name) {
+                  const groupType = (createParams.groupType as GroupType) || 'Public';
+                  // 根据群组类型和名称生成对应的头像 URL
+                  const avatarUrl = generateGroupAvatarByType(createParams.name, groupType);
+                  // 返回修改后的参数，添加 faceUrl 字段
+                  return {
+                    ...createParams,
+                    faceUrl: avatarUrl,
+                  };
+                }
+              }
+              return params;
+            }}
+          />
+        ) : (
+          <ContactList className="contact-list" />
+        )}
       </div>
 
       {/* 右侧聊天 */}
@@ -166,12 +190,15 @@ function ChatApp() {
 
       {/* 联系人详情 */}
       {activeTab === 'contacts' && (
-        <ContactInfo
-          className="contact-detail-panel"
-          onSendMessage={() => setActiveTab('conversations')}
-          onEnterGroup={() => setActiveTab('conversations')}
-        />
+        <div className="contact-container">
+          <ContactInfo
+            className="contact-detail-panel"
+            onSendMessage={() => setActiveTab('conversations')}
+            onEnterGroup={() => setActiveTab('conversations')}
+          />
+        </div>
       )}
+
     </div>
   );
 }
