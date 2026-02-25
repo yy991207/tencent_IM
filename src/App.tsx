@@ -50,6 +50,11 @@ function ChatApp() {
     preview: string;
     time: Date;
   }>>([]);
+
+  const [communityConversationSummary, setCommunityConversationSummary] = useState<Record<string, {
+    lastMessageAbstract: string;
+    lastMessageTime: Date;
+  }>>({});
   
   const { language, theme } = useUIKit();
 
@@ -95,6 +100,21 @@ function ChatApp() {
     const isCommunity = groupProfile?.type === 'Community';
     const groupAvatarUrl = groupProfile?.avatar || groupProfile?.faceUrl;
 
+    const sdkLastMessageAbstract = conversation?.lastMessage?.messageForShow || '';
+    const sdkLastMessageTimeRaw = conversation?.lastMessage?.lastTime;
+    const sdkLastMessageTime = sdkLastMessageTimeRaw ? new Date(Number(sdkLastMessageTimeRaw) * 1000) : null;
+
+    const communityKey = groupProfile?.groupID;
+    const communitySummary = communityKey ? communityConversationSummary[communityKey] : undefined;
+    const displayAbstract = isCommunity
+      ? (communitySummary?.lastMessageAbstract || '')
+      : sdkLastMessageAbstract;
+    const displayTime = isCommunity
+      ? (communitySummary?.lastMessageTime || null)
+      : sdkLastMessageTime;
+
+    const shouldHide = !displayAbstract;
+
     return (
       <div
         onClick={() => {
@@ -115,7 +135,13 @@ function ChatApp() {
         }}
         style={{ cursor: 'pointer' }}
       >
-        <ConversationPreview {...props} />
+        <ConversationPreview
+          {...props}
+          LastMessageAbstract={shouldHide ? '' : (displayAbstract || '')}
+          LastMessageTimestamp={!shouldHide && displayTime
+            ? new Date(displayTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+            : ''}
+        />
       </div>
     );
   };
@@ -285,6 +311,16 @@ function ChatApp() {
               groupName={currentCommunity.groupName}
               groupAvatarUrl={currentCommunity.groupAvatarUrl}
               openCommentDetailMessageId={openCommunityCommentDetailMessageId}
+              onCommunitySummaryChange={(summary) => {
+                if (!summary.groupID) return;
+                setCommunityConversationSummary((prev) => ({
+                  ...prev,
+                  [summary.groupID as string]: {
+                    lastMessageAbstract: summary.lastMessageAbstract,
+                    lastMessageTime: summary.lastMessageTime,
+                  },
+                }));
+              }}
               onTopicBookmarkChange={(topic, messageId) => {
                 setOpenCommunityCommentDetailMessageId(null);
                 setTopicBookmarks((prev) => {

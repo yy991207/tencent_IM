@@ -11,6 +11,11 @@ interface CommunityChatViewProps {
   onBack?: () => void;        // 返回按钮回调
   embedded?: boolean;         // 嵌入模式：不展示顶部返回头，避免影响外层会话布局
   openCommentDetailMessageId?: string | null; // 外部触发打开评论详情
+  onCommunitySummaryChange?: (summary: {
+    groupID?: string;
+    lastMessageAbstract: string;
+    lastMessageTime: Date;
+  }) => void;
   onTopicBookmarkChange?: (topic: {
     groupID?: string;
     groupName: string;
@@ -50,6 +55,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   onBack,
   embedded = false,
   openCommentDetailMessageId,
+  onCommunitySummaryChange,
   onTopicBookmarkChange,
 }) => {
   const [showMessageInput, setShowMessageInput] = useState(false);
@@ -73,6 +79,25 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (!groupID) return;
+    if (messages.length === 0) return;
+
+    const lastPost = messages[messages.length - 1];
+    const comments = lastPost.comments || [];
+    const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
+    const lastMessageAbstract = lastComment
+      ? `${lastComment.sender}：${lastComment.content}`
+      : '暂无评论';
+    const lastMessageTime = lastComment?.time || lastPost.time;
+
+    onCommunitySummaryChange?.({
+      groupID,
+      lastMessageAbstract,
+      lastMessageTime,
+    });
+  }, [groupID, messages, onCommunitySummaryChange]);
 
   useEffect(() => {
     if (!openCommentDetailMessageId) return;
