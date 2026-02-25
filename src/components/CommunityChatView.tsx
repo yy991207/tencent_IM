@@ -71,6 +71,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [shareMessageId, setShareMessageId] = useState<string | null>(null);
   const [shareSearchValue, setShareSearchValue] = useState('');
 
+  const onCommunitySummaryChangeRef = useRef(onCommunitySummaryChange);
+  const lastReportedSummaryRef = useRef<{ abstract: string; time: number } | null>(null);
+
   // 滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -79,6 +82,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    onCommunitySummaryChangeRef.current = onCommunitySummaryChange;
+  }, [onCommunitySummaryChange]);
 
   useEffect(() => {
     if (!groupID) return;
@@ -92,12 +99,22 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       : '暂无评论';
     const lastMessageTime = lastComment?.time || lastPost.time;
 
-    onCommunitySummaryChange?.({
+    const reportKey = {
+      abstract: lastMessageAbstract,
+      time: lastMessageTime.getTime(),
+    };
+    const prevKey = lastReportedSummaryRef.current;
+    if (prevKey && prevKey.abstract === reportKey.abstract && prevKey.time === reportKey.time) {
+      return;
+    }
+    lastReportedSummaryRef.current = reportKey;
+
+    onCommunitySummaryChangeRef.current?.({
       groupID,
       lastMessageAbstract,
       lastMessageTime,
     });
-  }, [groupID, messages, onCommunitySummaryChange]);
+  }, [groupID, messages]);
 
   useEffect(() => {
     if (!openCommentDetailMessageId) return;
