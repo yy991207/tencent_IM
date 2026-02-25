@@ -6,6 +6,7 @@ interface CommunityChatViewProps {
   groupID?: string;           // 社群 ID
   groupName?: string;         // 社群名称
   onBack?: () => void;        // 返回按钮回调
+  embedded?: boolean;         // 嵌入模式：不展示顶部返回头，避免影响外层会话布局
 }
 
 interface Message {
@@ -23,9 +24,9 @@ interface Message {
  * 支持留言板功能，用户可以在右下角点击"+"按钮发送留言
  */
 export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
-  groupID,
   groupName = '社群',
   onBack,
+  embedded = false,
 }) => {
   const [showMessageInput, setShowMessageInput] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -107,7 +108,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   };
 
   // 处理转发
-  const handleShare = (msg: Message) => {
+  const handleShare = () => {
     // 简单实现：弹出选择框让用户选择转发给谁
     const target = window.prompt('输入要转发给的联系人或群组名称：');
     if (target && target.trim()) {
@@ -152,12 +153,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   return (
     <div className="community-chat-view">
       {/* 头部 */}
-      <div className="community-chat-header">
-        <button className="back-button" onClick={onBack}>
-          <FiArrowLeft />
-        </button>
-        <span className="group-name">{groupName}</span>
-      </div>
+      {!embedded && (
+        <div className="community-chat-header">
+          <button className="back-button" onClick={onBack}>
+            <FiArrowLeft />
+          </button>
+          <span className="group-name">{groupName}</span>
+        </div>
+      )}
 
       {/* 消息列表区域 */}
       <div className="community-message-list">
@@ -202,7 +205,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     </button>
                     <button
                       className="interaction-btn"
-                      onClick={() => handleShare(msg)}
+                      onClick={() => handleShare()}
                       title="转发"
                     >
                       <FiShare2 className="interaction-icon" />

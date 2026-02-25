@@ -18,7 +18,7 @@ import {
   useConversationListState,
   ConversationPreview,
 } from "@tencentcloud/chat-uikit-react";
-import type { ConversationPreviewProps, ConversationModel } from "@tencentcloud/chat-uikit-react";
+import type { ConversationPreviewProps } from "@tencentcloud/chat-uikit-react";
 import { IconChat, IconUsergroup, IconBulletpoint, IconSearch } from "@tencentcloud/uikit-base-component-react";
 import { generateGroupAvatarByType, type GroupType } from './utils/groupAvatar';
 import CommunityChatView from './components/CommunityChatView';
@@ -93,6 +93,9 @@ function ChatApp() {
               groupName: groupProfile.name || '社群',
             });
             setShowCommunityView(true);
+          } else {
+            setShowCommunityView(false);
+            setCurrentCommunity(null);
           }
           setActiveConversation(conversation?.conversationID);
         }}
@@ -159,79 +162,80 @@ function ChatApp() {
 
       {/* 右侧聊天 */}
       {activeTab === 'conversations' && (
-        showCommunityView && currentCommunity ? (
-          <CommunityChatView
-            groupID={currentCommunity.groupID}
-            groupName={currentCommunity.groupName}
-            onBack={() => {
-              setShowCommunityView(false);
-              setCurrentCommunity(null);
-            }}
-          />
-        ) : (
-          <Chat
-            className="chat-content-panel"
-            PlaceholderEmpty={
-              <div className="empty-placeholder">
-                <div className="empty-icon">💬</div>
-                <div className="empty-title">{texts.emptyTitle}</div>
-                <div className="empty-subtitle">{texts.emptySub}</div>
+        <Chat
+          className="chat-content-panel"
+          PlaceholderEmpty={
+            <div className="empty-placeholder">
+              <div className="empty-icon">💬</div>
+              <div className="empty-title">{texts.emptyTitle}</div>
+              <div className="empty-subtitle">{texts.emptySub}</div>
+            </div>
+          }
+        >
+          <ChatHeader
+            ChatHeaderRight={
+              <div className="header-actions">
+                <button
+                  className="icon-button"
+                  onClick={() => setIsSearchInChatShow(!isSearchInChatShow)}
+                >
+                  <IconSearch size="20px" />
+                </button>
+                <button
+                  className="icon-button"
+                  onClick={() => setIsChatSettingShow(!isChatSettingShow)}
+                >
+                  <IconBulletpoint size="20px" />
+                </button>
               </div>
             }
-          >
-            <ChatHeader
-              ChatHeaderRight={
-                <div className="header-actions">
-                  <button
-                    className="icon-button"
-                    onClick={() => setIsSearchInChatShow(!isSearchInChatShow)}
-                  >
-                    <IconSearch size="20px" />
-                  </button>
-                  <button
-                    className="icon-button"
-                    onClick={() => setIsChatSettingShow(!isChatSettingShow)}
-                  >
-                    <IconBulletpoint size="20px" />
-                  </button>
-                </div>
-              }
-            />
-            <MessageList />
-            <MessageInput />
-            {/* 聊天设置侧边栏 */}
-            {isChatSettingShow && (
-              <div className="chat-sidebar">
-                <div className="chat-sidebar-header">
-                  <span className="chat-sidebar-title">设置</span>
-                  <button
-                    className="icon-button"
-                    onClick={() => setIsChatSettingShow(false)}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <ChatSetting />
-              </div>
-            )}
+          />
 
-            {/* 会话内搜索侧边栏 */}
-            {isSearchInChatShow && (
-              <div className="chat-sidebar">
-                <div className="chat-sidebar-header">
-                  <span className="chat-sidebar-title">群搜索</span>
-                  <button
-                    className="icon-button"
-                    onClick={() => setIsSearchInChatShow(false)}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <Search variant={VariantType.EMBEDDED} />
+          {showCommunityView && currentCommunity ? (
+            <CommunityChatView
+              embedded={true}
+              groupID={currentCommunity.groupID}
+              groupName={currentCommunity.groupName}
+            />
+          ) : (
+            <>
+              <MessageList />
+              <MessageInput />
+            </>
+          )}
+
+          {/* 聊天设置侧边栏 */}
+          {isChatSettingShow && (
+            <div className="chat-sidebar">
+              <div className="chat-sidebar-header">
+                <span className="chat-sidebar-title">设置</span>
+                <button
+                  className="icon-button"
+                  onClick={() => setIsChatSettingShow(false)}
+                >
+                  ✕
+                </button>
               </div>
-            )}
-          </Chat>
-        )
+              <ChatSetting />
+            </div>
+          )}
+
+          {/* 会话内搜索侧边栏 */}
+          {isSearchInChatShow && (
+            <div className="chat-sidebar">
+              <div className="chat-sidebar-header">
+                <span className="chat-sidebar-title">群搜索</span>
+                <button
+                  className="icon-button"
+                  onClick={() => setIsSearchInChatShow(false)}
+                >
+                  ✕
+                </button>
+              </div>
+              <Search variant={VariantType.EMBEDDED} />
+            </div>
+          )}
+        </Chat>
       )}
 
       {/* 联系人详情 */}
