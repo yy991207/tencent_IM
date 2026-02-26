@@ -221,7 +221,16 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     const isCommunity = groupProfile?.type === 'Community';
     const groupAvatarUrl = groupProfile?.avatar || groupProfile?.faceUrl;
 
-    const sdkLastMessageAbstract = conversation?.lastMessage?.messageForShow || '';
+    const sdkLastMessageAbstractRaw = conversation?.lastMessage?.messageForShow || '';
+    // 新建群聊但尚无人发言时，SDK 可能会返回类似“[Custom Messages]”的占位摘要。
+    // 这类摘要没有业务价值，会干扰用户判断“群里是否有聊天记录”，因此统一视为空摘要。
+    const sdkLastMessageAbstract = (() => {
+      const t = String(sdkLastMessageAbstractRaw || '').trim();
+      if (!t) return '';
+      if (/^\[(Custom Message|Custom Messages|自定义消息)\]$/i.test(t)) return '';
+      if (/^(Custom Message|Custom Messages|自定义消息)$/i.test(t)) return '';
+      return t;
+    })();
     const sdkLastMessageTimeRaw = conversation?.lastMessage?.lastTime;
     const sdkLastMessageTime = sdkLastMessageTimeRaw ? new Date(Number(sdkLastMessageTimeRaw) * 1000) : null;
 
