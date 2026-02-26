@@ -210,7 +210,14 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
                             className={`custom-create-friend-item ${checked ? 'is-checked' : ''}`}
                             onClick={() => toggleSelect(p)}
                           >
+                            <div className="custom-create-friend-info">
+                            <img 
+                              className="custom-create-friend-avatar" 
+                              src={p?.avatar || 'https://web.sdk.qcloud.com/component/TUIKit/assets/avatar_21.png'} 
+                              alt="" 
+                            />
                             <span className="custom-create-friend-name">{nick}</span>
+                          </div>
                             <span className="custom-create-friend-check">{checked ? '已选' : ''}</span>
                           </button>
                         );
@@ -225,7 +232,14 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
                     <div className="custom-create-selected-list">
                       {selected.map((p) => (
                         <div key={p.userID} className="custom-create-selected-item">
-                          <span className="custom-create-selected-name">{p.nick || p.userID}</span>
+                          <div className="custom-create-selected-info">
+                            <img 
+                              className="custom-create-selected-avatar" 
+                              src={p?.avatar || 'https://web.sdk.qcloud.com/component/TUIKit/assets/avatar_21.png'} 
+                              alt="" 
+                            />
+                            <span className="custom-create-selected-name">{p.nick || p.userID}</span>
+                          </div>
                           <button
                             type="button"
                             className="custom-create-selected-remove"
