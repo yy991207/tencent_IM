@@ -23,6 +23,7 @@ import { IconChat, IconUsergroup, IconBulletpoint, IconSearch } from "@tencentcl
 import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
 import { generateGroupAvatarByType, type GroupType } from './utils/groupAvatar';
 import CommunityChatView from './components/CommunityChatView';
+import CustomConversationCreate from './components/CustomConversationCreate';
 import { loadRuntimeConfig, type RuntimeConfig, type UserEntry } from './utils/runtimeConfig';
 import React from 'react';
 import { emojiBaseUrl, emojiUrlMap } from './utils/tuiEmoji';
@@ -501,23 +502,38 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
               Preview={(props: ConversationPreviewProps) => (
                 <CustomConversationPreview {...props} />
               )}
+              ConversationCreate={CustomConversationCreate as any}
               onBeforeCreateConversation={(params) => {
               // 在创建群组前，根据群组类型自动生成头像
-              // params 可能是 string 或 CreateGroupParams 类型，需要类型检查
-              if (params && typeof params === 'object' && 'type' in params) {
-                const createParams = params as any;
-                if (createParams.type === 'GROUP' && createParams.name) {
-                  const groupType = (createParams.groupType as GroupType) || 'Public';
-                  // 根据群组类型和名称生成对应的头像 URL
-                  const avatarUrl = generateGroupAvatarByType(createParams.name, groupType);
-                  // 返回修改后的参数，添加 faceUrl 字段
-                  return {
-                    ...createParams,
-                    faceUrl: avatarUrl,
-                  };
-                }
+              // 说明：TUIKit 内置创建群与自定义创建群，参数结构可能不同，这里做兼容兜底。
+              // - 内置创建群：可能会传入 { type: 'GROUP', name, groupType, ... }
+              // - SDK CreateGroupParams：{ name, type: 'Private'/'Community'/..., avatar?, memberList? }
+              if (!params || typeof params !== 'object') return params;
+              const createParams = params as any;
+
+              const groupName = String(createParams.name || '').trim();
+              if (!groupName) return params;
+
+              // 兼容两种入参：优先读 groupType，其次从 type 推断
+              const ENGINE: any = TUIChatEngine as any;
+              let groupType: GroupType | undefined = createParams.groupType as GroupType | undefined;
+              if (!groupType) {
+                if (createParams.type === ENGINE?.TYPES?.GRP_WORK) groupType = 'Work';
+                if (createParams.type === ENGINE?.TYPES?.GRP_COMMUNITY) groupType = 'Community';
+                if (createParams.type === ENGINE?.TYPES?.GRP_PUBLIC) groupType = 'Public';
+                if (createParams.type === ENGINE?.TYPES?.GRP_MEETING) groupType = 'Meeting';
+                if (createParams.type === ENGINE?.TYPES?.GRP_AVCHATROOM) groupType = 'AVChatRoom';
               }
-              return params;
+              const finalGroupType: GroupType = groupType || 'Public';
+
+              const avatarUrl = generateGroupAvatarByType(groupName, finalGroupType);
+              return {
+                ...createParams,
+                // SDK CreateGroupParams 使用 avatar 字段
+                avatar: createParams.avatar || avatarUrl,
+                // 部分场景（或旧代码）使用 faceUrl，保留兼容
+                faceUrl: createParams.faceUrl || avatarUrl,
+              };
               }}
             />
           </>
