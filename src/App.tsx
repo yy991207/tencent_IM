@@ -23,7 +23,7 @@ import { IconChat, IconUsergroup, IconBulletpoint, IconSearch } from "@tencentcl
 import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
 import { generateGroupAvatarByType, type GroupType } from './utils/groupAvatar';
 import CommunityChatView from './components/CommunityChatView';
-import { loadRuntimeConfig, type RuntimeConfig } from './utils/runtimeConfig';
+import { loadRuntimeConfig, type RuntimeConfig, type UserEntry } from './utils/runtimeConfig';
 import './App.css';
 
 function App() {
@@ -74,9 +74,15 @@ function App() {
   }
 
   return (
-    <UIKitProvider theme={'light'} language={'zh-CN'}>
-      <ChatApp config={config} />
-    </UIKitProvider>
+    <div className="app-root">
+      {/* 多用户切换栏：多人对话模拟时，点击可在新标签页以不同身份登录 */}
+      {config.users.length > 1 && (
+        <UserSwitchBar users={config.users} currentUserID={config.userID} />
+      )}
+      <UIKitProvider theme={'light'} language={'zh-CN'}>
+        <ChatApp config={config} />
+      </UIKitProvider>
+    </div>
   );
 }
 
@@ -526,6 +532,41 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// 多用户切换栏组件
+interface UserSwitchBarProps {
+  users: UserEntry[];
+  currentUserID: string;
+}
+
+function UserSwitchBar({ users, currentUserID }: UserSwitchBarProps) {
+  // 点击切换用户：在新标签页打开（保留当前页面不变）
+  const handleSwitch = (userID: string) => {
+    if (userID === currentUserID) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('userID', userID);
+    window.open(url.toString(), `_chat_${userID}`);
+  };
+
+  return (
+    <div className="user-switch-bar">
+      <span className="user-switch-label">多人模拟</span>
+      <div className="user-switch-list">
+        {users.map((u) => (
+          <button
+            key={u.userID}
+            className={`user-switch-btn ${u.userID === currentUserID ? 'active' : ''}`}
+            onClick={() => handleSwitch(u.userID)}
+            title={u.userID === currentUserID ? '当前登录用户' : `点击在新标签页以 ${u.userID} 身份登录`}
+          >
+            {u.userID}
+          </button>
+        ))}
+      </div>
+      <span className="user-switch-hint">当前: {currentUserID}</span>
     </div>
   );
 }

@@ -2,8 +2,20 @@
 
 # 腾讯云 IM
 SDKAppID: 0
-userID: ""
-userSig: ""
+
+# 多用户列表（用于多人对话模拟，每行一个用户，格式：userID:userSig）
+# 打开多个浏览器标签页，通过 URL 参数 ?userID=xxx 切换不同用户登录
+users:
+  - userID: "user01"
+    userSig: ""
+  - userID: "user02"
+    userSig: ""
+  - userID: "user03"
+    userSig: ""
+
+# 兼容单用户模式（如果不使用 users 列表，也可以直接配置以下字段）
+# userID: ""
+# userSig: ""
 
 # 预留字段（如你后续接入后端 API，可在此处配置）
 # apiKey: ""
