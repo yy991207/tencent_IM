@@ -7,6 +7,10 @@
 node_modules
 dist/
 
+# Sensitive runtime config
+public/config.yaml
+config.yaml
+
 # Profile
 .rspack-profile-*/
 

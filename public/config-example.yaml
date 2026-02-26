@@ -1,0 +1,9 @@
+# 复制本文件为 public/config.yaml，并填写你自己的配置（config.yaml 已在 .gitignore 中忽略，不会提交到远程）
+
+# 腾讯云 IM
+SDKAppID: 0
+userID: ""
+userSig: ""
+
+# 预留字段（如你后续接入后端 API，可在此处配置）
+# apiKey: ""

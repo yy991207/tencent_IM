@@ -22,19 +22,64 @@ import type { ConversationPreviewProps } from "@tencentcloud/chat-uikit-react";
 import { IconChat, IconUsergroup, IconBulletpoint, IconSearch } from "@tencentcloud/uikit-base-component-react";
 import { generateGroupAvatarByType, type GroupType } from './utils/groupAvatar';
 import CommunityChatView from './components/CommunityChatView';
+import { loadRuntimeConfig, type RuntimeConfig } from './utils/runtimeConfig';
 import './App.css';
 
 function App() {
   // 语言支持 en-US(default) / zh-CN / ja-JP / ko-KR / zh-TW
   // 主题支持 light(default) / dark
+  const [config, setConfig] = useState<RuntimeConfig | null>(null);
+  const [configError, setConfigError] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await loadRuntimeConfig();
+        if (cancelled) return;
+        setConfig(cfg);
+        setConfigError('');
+      } catch (e) {
+        if (cancelled) return;
+        setConfig(null);
+        setConfigError(e instanceof Error ? e.message : '加载配置失败');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (configError) {
+    return (
+      <div style={{ padding: 16, color: '#333' }}>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>配置加载失败</div>
+        <div style={{ whiteSpace: 'pre-wrap', color: '#666' }}>{configError}</div>
+        <div style={{ marginTop: 12, color: '#666' }}>
+          请按以下步骤处理：
+          <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
+            1. 复制 public/config-example.yaml 为 public/config.yaml
+            2. 填写 SDKAppID / userID / userSig
+            3. 重新启动本地服务
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return <div style={{ padding: 16, color: '#666' }}>加载配置中...</div>;
+  }
+
   return (
     <UIKitProvider theme={'light'} language={'zh-CN'}>
-      <ChatApp />
+      <ChatApp config={config} />
     </UIKitProvider>
   );
 }
 
-function ChatApp() {
+function ChatApp({ config }: { config: RuntimeConfig }) {
   const [activeTab, setActiveTab] = useState<'conversations' | 'contacts'>('conversations');
   const [isChatSettingShow, setIsChatSettingShow] = useState(false);
   const [isSearchInChatShow, setIsSearchInChatShow] = useState(false);
@@ -68,11 +113,11 @@ function ChatApp() {
     [language]
   );
 
-  // 鉴权信息配置 - 从 MCP 工具获取的测试凭证
+  // 鉴权信息配置 - 运行时从 public/config.yaml 加载
   const { status } = useLoginState({
-    SDKAppID: 1600127148, // number 类型
-    userID: 'test001',    // string 类型
-    userSig: 'eJwtjEEKwjAQAP*yZ6mbENIY8CSeLBZaUXssZC2LWGMTTEX8u9D2ODMwXzgVdfamASzIDGE1MTvqI9940pFCRBRLCu7ees8OrNCIQuZCmblEfhBYkediI6VCNVsaPQ8EVqMyiMuDO7BwLl6HD7UVtbsUr7o3VdOE8bhObkgXXyQ2sg77Upf43MLvDyItMg8_', // string 类型
+    SDKAppID: config.SDKAppID,
+    userID: config.userID,
+    userSig: config.userSig,
   });
 
   const currentUserId = loginUserInfo?.userId || '';
