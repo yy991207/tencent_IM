@@ -24,7 +24,7 @@ const groupTypeAvatarMap: Record<GroupType, AvatarStyle> = {
   'Public': 'avataaars',   // 陌生人社交群 - 人物头像风格，体现社交属性
   'Meeting': 'identicon',  // 临时会议群 - 几何图形，体现正式感
   'AVChatRoom': 'pixel-art', // 直播群 - 像素风格，体现娱乐属性
-  'Community': 'shapes',   // 社群 - 多彩图形，体现社区多样性
+  'Community': 'shapes',   // 话题论坛 - 多彩图形，体现社区多样性
 };
 
 /**

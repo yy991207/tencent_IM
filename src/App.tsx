@@ -194,7 +194,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         for (const messageId of ids) {
           list.push({
             groupID,
-            groupName: groupProfile?.name || '社群',
+            groupName: groupProfile?.name || '话题论坛',
             groupAvatarUrl: groupProfile?.avatar || groupProfile?.faceUrl,
             messageId,
             title: '话题',
@@ -351,7 +351,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
           if (isCommunity) {
             setCurrentCommunity({
               groupID: groupProfile.groupID,
-              groupName: groupProfile.name || '社群',
+              groupName: groupProfile.name || '话题论坛',
               groupAvatarUrl,
             });
             setShowCommunityView(true);

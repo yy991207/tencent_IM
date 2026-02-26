@@ -67,12 +67,12 @@ function truncateText(text: string, maxLen = 5): string {
 }
 
 /**
- * 社群聊天页面组件
+ * 话题论坛聊天页面组件
  * 支持留言板功能，用户可以在右下角点击"+"按钮发送留言
  */
 export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   groupID,
-  groupName = '社群',
+  groupName = '话题论坛',
   groupAvatarUrl,
   onBack,
   embedded = false,

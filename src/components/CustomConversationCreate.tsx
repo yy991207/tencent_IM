@@ -174,7 +174,7 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
                       checked={groupTypeKey === 'Community'}
                       onChange={() => setGroupTypeKey('Community')}
                     />
-                    <span>社群(Community)</span>
+                    <span>话题论坛(Community)</span>
                   </label>
                 </div>
               </div>

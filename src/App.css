@@ -523,7 +523,7 @@ body {
   width: 72px;
   height: 100%;
   background: var(--uikit-theme-light-bg-color-function);
-  display: flex;
+  display: none;
   flex-direction: column;
   align-items: center;
   padding: 20px 0;
