@@ -39,6 +39,46 @@ body {
   overflow: hidden;
 }
 
+.conversation-list-panel .uikit-conversationPreview__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.conversation-list-panel .uikit-conversationPreview__abstract {
+  font-size: 12px;
+  line-height: 18px;
+  color: #868e96;
+}
+
+.dark .conversation-list-panel .uikit-conversationPreview__abstract {
+  color: #868e96;
+}
+
+.conversation-list-panel .uikit-conversationPreview__time {
+  font-size: 12px;
+  line-height: 18px;
+  color: #adb5bd;
+}
+
+/* 统一两种类型的时间垂直位置：全部置顶对齐 */
+.conversation-list-panel .uikit-conversationPreview__external {
+  display: flex !important;
+  flex-direction: column !important;
+  align-self: flex-start !important; /* 强制容器置顶 */
+  margin-top: 2px !important;
+  align-items: flex-end !important;
+}
+
+.conversation-list-panel .uikit-conversationPreview__time {
+  order: 0 !important;
+}
+
+.conversation-list-panel .uikit-conversationPreview__unread {
+  order: 1 !important;
+  margin-top: 4px !important;
+}
+
 
 
 .topic-bookmark-item {
@@ -70,7 +110,7 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible; /* 改为 visible 以允许 # 标识溢出边界 */
   flex-shrink: 0;
   background: #e9ecef;
 }

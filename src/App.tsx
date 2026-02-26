@@ -20,6 +20,7 @@ import {
 } from "@tencentcloud/chat-uikit-react";
 import type { ConversationPreviewProps } from "@tencentcloud/chat-uikit-react";
 import { IconChat, IconUsergroup, IconBulletpoint, IconSearch } from "@tencentcloud/uikit-base-component-react";
+import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
 import { generateGroupAvatarByType, type GroupType } from './utils/groupAvatar';
 import CommunityChatView from './components/CommunityChatView';
 import { loadRuntimeConfig, type RuntimeConfig } from './utils/runtimeConfig';
@@ -192,16 +193,35 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     const sdkLastMessageTimeRaw = conversation?.lastMessage?.lastTime;
     const sdkLastMessageTime = sdkLastMessageTimeRaw ? new Date(Number(sdkLastMessageTimeRaw) * 1000) : null;
 
+    const isGroupConversation = (conversation as any)?.type === TUIChatEngine.TYPES.CONV_GROUP;
+    const lastMessage = (conversation as any)?.lastMessage;
+
+    const getGroupSpeakerPrefix = () => {
+      // 群聊摘要统一展示“发言人：内容”，社群/话题入口的摘要由其他逻辑生成，这里只处理标准群聊
+      if (!isGroupConversation) return '';
+      if (!lastMessage) return '';
+      const fromAccount = lastMessage?.fromAccount || '';
+      if (!fromAccount) return '';
+      if (fromAccount === currentUserId) return '我：';
+      const speaker = lastMessage?.nameCard || lastMessage?.nick || fromAccount;
+      return speaker ? `${speaker}：` : '';
+    };
+
     const communityKey = groupProfile?.groupID;
     const communitySummary = communityKey ? communityConversationSummary[communityKey] : undefined;
     const displayAbstract = isCommunity
       ? (communitySummary?.lastMessageAbstract || '')
-      : sdkLastMessageAbstract;
+      : (isGroupConversation
+        ? `${getGroupSpeakerPrefix()}${sdkLastMessageAbstract || ''}`
+        : sdkLastMessageAbstract);
     const displayTime = isCommunity
       ? (communitySummary?.lastMessageTime || null)
       : sdkLastMessageTime;
 
     const shouldHide = !displayAbstract;
+    const displayTimeText = !shouldHide && displayTime
+      ? new Date(displayTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      : '';
 
     return (
       <div
@@ -225,10 +245,12 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       >
         <ConversationPreview
           {...props}
-          LastMessageAbstract={shouldHide ? '' : (displayAbstract || '')}
-          LastMessageTimestamp={!shouldHide && displayTime
-            ? new Date(displayTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-            : ''}
+          LastMessageAbstract={shouldHide ? '' : (
+            <div className="uikit-conversationPreview__abstract">{displayAbstract || ''}</div>
+          )}
+          LastMessageTimestamp={displayTimeText ? (
+            <div className="uikit-conversationPreview__time">{displayTimeText}</div>
+          ) : ''}
         />
       </div>
     );
@@ -258,10 +280,9 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       content = (
         <>
           {topicBookmarks.map((t) => (
-            <button
+            <div
               key={`${t.groupID || ''}:${t.messageId}`}
-              type="button"
-              className="topic-bookmark-item topic-bookmark-item--inline"
+              className="topic-bookmark-wrapper"
               onClick={() => {
                 if (!t.groupID) return;
                 setCurrentCommunity({
@@ -272,25 +293,46 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 setShowCommunityView(true);
                 setOpenCommunityCommentDetailMessageId(t.messageId);
               }}
+              style={{ cursor: 'pointer' }}
             >
-              <div className="topic-bookmark-avatar">
-                {t.groupAvatarUrl ? (
-                  <img className="topic-bookmark-avatar-img" src={t.groupAvatarUrl} alt="" />
-                ) : (
-                  <div className="topic-bookmark-avatar-fallback"></div>
+              <ConversationPreview
+                conversation={{
+                  conversationID: `TOPIC:${t.messageId}`,
+                  type: 'TOPIC',
+                  groupProfile: {
+                    avatar: t.groupAvatarUrl,
+                    name: t.title,
+                  },
+                  getShowName: () => t.title,
+                  // 话题入口属于“模拟会话”，但 ConversationPreview 内部会读取以下字段
+                  // 这里补齐最小字段，避免运行时出现 undefined.includes / 读取 draftText 等异常
+                  markList: [],
+                  unreadCount: 0,
+                  isMuted: false,
+                  draftText: '',
+                  operationType: 0,
+                  lastMessage: null,
+                } as any}
+                LastMessageAbstract={
+                  <div className="uikit-conversationPreview__abstract">{t.preview}</div>
+                }
+                LastMessageTimestamp={
+                  <div className="uikit-conversationPreview__time">
+                    {t.time ? new Date(t.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </div>
+                }
+                Avatar={() => (
+                  <div className="topic-bookmark-avatar">
+                    {t.groupAvatarUrl ? (
+                      <img className="topic-bookmark-avatar-img" src={t.groupAvatarUrl} alt="" />
+                    ) : (
+                      <div className="topic-bookmark-avatar-fallback"></div>
+                    )}
+                    <div className="topic-bookmark-avatar-hash">#</div>
+                  </div>
                 )}
-                <div className="topic-bookmark-avatar-hash">#</div>
-              </div>
-              <div className="topic-bookmark-text">
-                <div className="topic-bookmark-name">{t.title}</div>
-                <div className="topic-bookmark-preview">{t.preview}</div>
-              </div>
-              <div className="topic-bookmark-time">
-                {t.time
-                  ? new Date(t.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-                  : ''}
-              </div>
-            </button>
+              />
+            </div>
           ))}
           {children}
         </>
