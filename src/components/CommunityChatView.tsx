@@ -3,6 +3,7 @@ import { ConversationList, ConversationPreview, useLoginState } from '@tencentcl
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft } from 'react-icons/fi';
+import ReactMarkdown from 'react-markdown';
 import {
   type CommunityPost,
   type CommunityLikeUser,
@@ -39,6 +40,31 @@ interface CommunityChatViewProps {
   } | null, messageId?: string) => void;
 }
 
+
+/**
+ * 将 Markdown 文本转为纯文本（用于会话列表预览等不需要渲染 Markdown 的场景）
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s+/g, '')           // 标题标记
+    .replace(/\*\*(.+?)\*\*/g, '$1')     // 粗体
+    .replace(/\*(.+?)\*/g, '$1')         // 斜体
+    .replace(/~~(.+?)~~/g, '$1')         // 删除线
+    .replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, '')) // 行内/块代码
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1') // 链接和图片
+    .replace(/^>\s+/gm, '')              // 引用
+    .replace(/^[-*+]\s+/gm, '')          // 无序列表
+    .replace(/^\d+\.\s+/gm, '')          // 有序列表
+    .replace(/---+/g, '')                // 水平线
+    .replace(/\n{2,}/g, ' ')             // 多余换行合并为空格
+    .trim();
+}
+
+/** 截断文本，用于左侧会话列表预览摘要（默认最多 5 个字符） */
+function truncateText(text: string, maxLen = 5): string {
+  const plain = stripMarkdown(text);
+  return plain.length > maxLen ? `${plain.slice(0, maxLen)}...` : plain;
+}
 
 /**
  * 社群聊天页面组件
@@ -111,11 +137,11 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     for (const p of posts) {
       if (!bookmarked.has(p.id)) continue;
 
-      const postTitle = `${p.sender}：${p.content}`;
+      const postTitle = `${p.sender}：${stripMarkdown(p.content)}`;
       const title = postTitle.length > 16 ? `${postTitle.slice(0, 16)}...` : postTitle;
       const comments = p.comments || [];
       const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
-      const preview = lastComment ? `${lastComment.sender}：${lastComment.content}` : '暂无评论';
+      const preview = lastComment ? `${lastComment.sender}：${truncateText(lastComment.content)}` : '暂无评论';
       const time = lastComment?.time || p.time;
 
       const reportKey = `${preview}__${time?.getTime?.() || 0}`;
@@ -143,7 +169,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     const comments = lastPost.comments || [];
     const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
     const lastMessageAbstract = lastComment
-      ? `${lastComment.sender}：${lastComment.content}`
+      ? `${lastComment.sender}：${truncateText(lastComment.content)}`
       : '暂无评论';
     const lastMessageTime = lastComment?.time || lastPost.time;
 
@@ -417,12 +443,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           prevPosts.map((p) => {
             if (p.id !== postId) return p;
 
-            const postTitle = `${p.sender}：${p.content}`;
+            const postTitle = `${p.sender}：${stripMarkdown(p.content)}`;
             const title = postTitle.length > 16 ? `${postTitle.slice(0, 16)}...` : postTitle;
             const comments = p.comments || [];
             const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
             const preview = lastComment
-              ? `${lastComment.sender}：${lastComment.content}`
+              ? `${lastComment.sender}：${truncateText(lastComment.content)}`
               : '暂无评论';
             const time = lastComment?.time || p.time;
 
@@ -521,7 +547,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     <span className="message-time">{formatTime(msg.time)}</span>
                   </div>
 
-                  <div className="message-bubble">{msg.content}</div>
+                  {/* 帖子正文：支持 Markdown 格式渲染（如标题、列表、代码块等） */}
+                  <div className="message-bubble markdown-body">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
                   {renderLikeInfo(msg.likes || [])}
                   <div className="message-interactions">
                     {isLiked ? (
@@ -589,7 +618,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                           {previewComments.map((c) => (
                             <div key={c.id} className="comment-item">
                               <span className="comment-sender">{c.sender}：</span>
-                              <span className="comment-content">{c.content}</span>
+                              {/* 评论预览：支持 Markdown 渲染 */}
+                              <span className="comment-content markdown-body markdown-compact">
+                                <ReactMarkdown>{c.content}</ReactMarkdown>
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -646,7 +678,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                       <div className="comment-detail-post-sender">{msg.sender}</div>
                       <div className="comment-detail-post-time">{formatTime(msg.time)}</div>
                     </div>
-                    <div className="comment-detail-post-content">{msg.content}</div>
+                    {/* 评论详情中的帖子正文：同样支持 Markdown 渲染 */}
+                    <div className="comment-detail-post-content markdown-body">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
                     {hasLikeInfo && (
                       <div className="comment-detail-like-info">{renderLikeInfo(likeUsers)}</div>
                     )}
@@ -662,7 +697,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                             <span className="comment-detail-item-sender">{c.sender}</span>
                             <span className="comment-detail-item-time">{formatTime(c.time)}</span>
                           </div>
-                          <div className="comment-detail-item-content">{c.content}</div>
+                          {/* 评论详情：支持 Markdown 渲染 */}
+                          <div className="comment-detail-item-content markdown-body">
+                            <ReactMarkdown>{c.content}</ReactMarkdown>
+                          </div>
                         </div>
                       ))
                     )}
@@ -880,6 +918,121 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
         }
 
+        /* ─── Markdown 渲染样式（社群帖子正文 & 评论） ─── */
+        .markdown-body {
+          overflow: hidden; /* 限制所有 Markdown 渲染区域不溢出 */
+        }
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3,
+        .markdown-body h4,
+        .markdown-body h5,
+        .markdown-body h6 {
+          margin: 8px 0 4px;
+          line-height: 1.4;
+          font-weight: 600;
+          color: #333;
+        }
+        .markdown-body h1 { font-size: 1.4em; }
+        .markdown-body h2 { font-size: 1.25em; }
+        .markdown-body h3 { font-size: 1.1em; }
+
+        .markdown-body p {
+          margin: 4px 0;
+        }
+
+        .markdown-body ul,
+        .markdown-body ol {
+          margin: 4px 0;
+          padding-left: 1.5em;
+        }
+
+        .markdown-body li {
+          margin: 2px 0;
+        }
+
+        .markdown-body blockquote {
+          margin: 6px 0;
+          padding: 4px 12px;
+          border-left: 3px solid #1890ff;
+          color: #666;
+          background: #f9f9f9;
+          border-radius: 0 4px 4px 0;
+        }
+
+        .markdown-body code {
+          background: #f5f5f5;
+          padding: 1px 5px;
+          border-radius: 3px;
+          font-size: 0.9em;
+          font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+
+        .markdown-body pre {
+          background: #f5f5f5;
+          padding: 10px 12px;
+          border-radius: 6px;
+          overflow-x: auto;
+          margin: 6px 0;
+        }
+
+        .markdown-body pre code {
+          background: none;
+          padding: 0;
+        }
+
+        .markdown-body a {
+          color: #1890ff;
+          text-decoration: none;
+        }
+
+        .markdown-body a:hover {
+          text-decoration: underline;
+        }
+
+        .markdown-body hr {
+          border: none;
+          border-top: 1px solid #e8e8e8;
+          margin: 8px 0;
+        }
+
+        .markdown-body img {
+          max-width: 100%;
+          border-radius: 4px;
+        }
+
+        .markdown-body table {
+          border-collapse: collapse;
+          width: 100%;
+          margin: 6px 0;
+        }
+
+        .markdown-body th,
+        .markdown-body td {
+          border: 1px solid #e8e8e8;
+          padding: 6px 10px;
+          text-align: left;
+          font-size: 0.9em;
+        }
+
+        .markdown-body th {
+          background: #fafafa;
+          font-weight: 600;
+        }
+
+        /* 首尾元素去掉多余外边距 */
+        .markdown-body > :first-child { margin-top: 0; }
+        .markdown-body > :last-child  { margin-bottom: 0; }
+
+        /* 紧凑模式：评论预览区内的 Markdown 不添加额外间距 */
+        .markdown-compact p {
+          margin: 0;
+          display: inline;
+        }
+        .markdown-compact > * {
+          display: inline;
+        }
+
         .like-info {
           display: flex;
           flex-wrap: wrap;
@@ -921,6 +1074,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           border: 1px solid rgba(24, 144, 255, 0.18);
           border-radius: 12px;
           padding: 12px;
+          overflow: hidden; /* 防止评论区 Markdown 内容溢出 */
         }
 
         .comment-preview {
@@ -1083,6 +1237,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           color: #333;
           line-height: 1.6;
           word-break: break-word;
+          overflow: hidden; /* 防止 Markdown 渲染后内容溢出 */
         }
 
         .comment-detail-like-info {
@@ -1147,6 +1302,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           color: #333;
           line-height: 1.5;
           word-break: break-word;
+          overflow: hidden; /* 防止 Markdown 渲染后内容溢出 */
         }
 
         .comment-detail-input {

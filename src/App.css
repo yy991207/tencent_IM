@@ -156,6 +156,7 @@ body {
 .chat-content-panel {
   flex: 1;
   border-left: 1px solid var(--uikit-theme-light-stroke-color-primary);
+  overflow: hidden; /* 防止社群 Markdown 内容溢出到左侧会话列表 */
 }
 
 .dark .chat-content-panel {
