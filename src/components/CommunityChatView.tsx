@@ -12,8 +12,8 @@ import {
   sendComment as sdkSendComment,
   toggleLike as sdkToggleLike,
   forwardPost as sdkForwardPost,
-  loadBookmarks,
-  saveBookmarks,
+  loadTopicBookmarkIdsFromConversation,
+  saveTopicBookmarkIdsToConversation,
   subscribeMessages,
 } from '../utils/communityMessageService';
 
@@ -199,8 +199,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     const doLoad = async () => {
       setIsLoading(true);
       try {
-        const savedBookmarks = loadBookmarks(currentUserId);
-        setBookmarkedIds(savedBookmarks);
+        const conversationID = `GROUP${groupID}`;
+        const savedBookmarks = await loadTopicBookmarkIdsFromConversation(conversationID);
+        if (!cancelled) setBookmarkedIds(savedBookmarks);
 
         const loadedPosts = await loadCommunityMessages(groupID, savedBookmarks);
         if (!cancelled) setPosts(loadedPosts);
@@ -427,7 +428,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   // 处理收藏（localStorage 持久化）
   const handleBookmark = (postId: string) => {
+    if (!groupID) return;
     setBookmarkedIds((prev) => {
+      const conversationID = `GROUP${groupID}`;
       const newSet = new Set(prev);
       if (newSet.has(postId)) {
         newSet.delete(postId);
@@ -467,7 +470,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         );
       }
 
-      saveBookmarks(currentUserId, newSet);
+      // 使用 SDK 的会话 customData 持久化收藏（多端同步，且社群会话被删除后数据自然消失）
+      // 说明：customData 最大 256 bytes，超限会自动裁剪最早的收藏，保证写入成功。
+      saveTopicBookmarkIdsToConversation(conversationID, newSet);
       return newSet;
     });
   };

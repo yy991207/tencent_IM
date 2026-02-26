@@ -12,6 +12,10 @@ import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
 export const BUSINESS_ID_POST = 'community_post';
 export const BUSINESS_ID_COMMENT = 'community_comment';
 
+// 会话 customData 存储话题收藏（每个会话 customData 最大 256 bytes）
+const TOPIC_BOOKMARK_CUSTOMDATA_KEY = 'community_topic_bookmarks_v1';
+const MAX_CUSTOMDATA_BYTES = 256;
+
 // ─── 类型 ────────────────────────────────────────────────
 export interface CommunityLikeUser {
   userId: string;
@@ -54,6 +58,55 @@ function safeParse(json: string | undefined | null, fallback: any = {}): any {
   } catch {
     return fallback;
   }
+}
+
+function safeStringify(data: any, fallback = ''): string {
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return fallback;
+  }
+}
+
+function getByteLength(str: string): number {
+  try {
+    return new TextEncoder().encode(str).length;
+  } catch {
+    return str.length;
+  }
+}
+
+function parseTopicBookmarkIdsFromCustomData(customData: string | undefined | null): string[] {
+  const obj = safeParse(customData, {});
+  const raw = obj?.[TOPIC_BOOKMARK_CUSTOMDATA_KEY];
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter((x) => typeof x === 'string' && x.trim());
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function buildCustomDataWithTopicBookmarks(ids: string[]): string {
+  // 说明：customData 的限制是 256 bytes，这里优先保证“能写入成功”。
+  // 若收藏太多，会自动丢弃最早的（数组头部），避免接口失败。
+  const uniq = Array.from(new Set((ids || []).filter(Boolean)));
+  for (let start = 0; start < uniq.length; start++) {
+    const slice = uniq.slice(start);
+    const payload = {
+      [TOPIC_BOOKMARK_CUSTOMDATA_KEY]: slice,
+    };
+    const str = safeStringify(payload, '');
+    if (!str) continue;
+    if (getByteLength(str) <= MAX_CUSTOMDATA_BYTES) return str;
+  }
+  // 兜底：实在超限就写空
+  return safeStringify({ [TOPIC_BOOKMARK_CUSTOMDATA_KEY]: [] }, '{}');
 }
 
 function toPost(msg: any, bookmarkedIds: Set<string>): CommunityPost | null {
@@ -131,7 +184,14 @@ export async function loadCommunityMessages(
   const RETRY_DELAY_MS = 1000;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const allMessages = await fetchAll();
+    let allMessages: any[] = [];
+    try {
+      allMessages = await fetchAll();
+    } catch {
+      // 社群被删除/无权限/会话不可用时，SDK 可能会在内部打印 emptyMessageBody 等日志。
+      // 这里直接返回空列表，避免反复重试导致刷屏。
+      return [];
+    }
 
     if (allMessages.length > 0 || attempt === MAX_RETRIES) {
       return parseCommunityMessages(allMessages, bookmarkedIds);
@@ -142,6 +202,44 @@ export async function loadCommunityMessages(
   }
 
   return []; // fallback
+}
+
+// ─── 话题收藏（SDK customData）────────────────────────────
+
+/**
+ * 从会话 customData 读取“话题收藏 messageId 列表”。
+ * 注意：该数据是“会话维度 + 当前用户维度”，适合做个人收藏。
+ */
+export async function loadTopicBookmarkIdsFromConversation(conversationID: string): Promise<Set<string>> {
+  if (!conversationID) return new Set();
+  const engine: any = TUIChatEngine as any;
+  try {
+    // 优先从会话档案读取，避免依赖本地缓存是否已加载
+    const res = await engine?.TUIConversation?.getConversationProfile?.(conversationID);
+    const conv = res?.data?.conversation || res?.data || res;
+    const customData = conv?.customData || '';
+    return new Set(parseTopicBookmarkIdsFromCustomData(customData));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * 写入会话 customData（最大 256 bytes，超限会自动裁剪）。
+ */
+export async function saveTopicBookmarkIdsToConversation(conversationID: string, ids: Set<string>): Promise<void> {
+  if (!conversationID) return;
+  const chat = getChat();
+  const list = Array.from(ids || new Set());
+  const customData = buildCustomDataWithTopicBookmarks(list);
+  try {
+    await chat.setConversationCustomData({
+      conversationIDList: [conversationID],
+      customData,
+    });
+  } catch {
+    // 写入失败时不阻塞主流程（可能是权限/网络/长度等原因）
+  }
 }
 
 /**

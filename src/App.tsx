@@ -26,6 +26,7 @@ import CommunityChatView from './components/CommunityChatView';
 import { loadRuntimeConfig, type RuntimeConfig, type UserEntry } from './utils/runtimeConfig';
 import React from 'react';
 import { emojiBaseUrl, emojiUrlMap } from './utils/tuiEmoji';
+import { loadTopicBookmarkIdsFromConversation } from './utils/communityMessageService';
 import './App.css';
 
 function renderTextWithTUIEmoji(text: string): React.ReactNode {
@@ -127,7 +128,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     messageId: string;
     title: string;
     preview: string;
-    time: Date;
+    time?: Date;
   }>>([]);
 
   const [communityConversationSummary, setCommunityConversationSummary] = useState<Record<string, {
@@ -155,36 +156,57 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
 
   const currentUserId = loginUserInfo?.userId || '';
 
-  const TOPIC_BOOKMARK_KEY_PREFIX = 'community_topic_bookmarks_';
-
-  const loadTopicBookmarks = (userID: string) => {
-    if (!userID) return [];
+  const refreshTopicBookmarksFromSDK = async () => {
+    // 说明：话题入口的“收藏关系”存储在对应社群会话的 customData 中（每个会话 256 bytes）。
+    // 这里在登录成功后拉取会话列表，汇总出所有社群的收藏 messageId，从而重建左侧 # 入口。
+    const engine: any = TUIChatEngine as any;
     try {
-      const raw = localStorage.getItem(`${TOPIC_BOOKMARK_KEY_PREFIX}${userID}`);
-      if (!raw) return [];
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return [];
-      return arr
-        .map((t: any) => ({
-          ...t,
-          time: t?.time ? new Date(t.time) : new Date(),
-        }))
-        .filter((t: any) => t && t.messageId);
-    } catch {
-      return [];
-    }
-  };
+      const res = await engine?.TUIConversation?.getConversationList?.();
+      const convList: any[] = res?.data?.conversationList || res?.data || [];
+      if (!Array.isArray(convList) || convList.length === 0) {
+        setTopicBookmarks([]);
+        return;
+      }
 
-  const saveTopicBookmarks = (userID: string, topics: any[]) => {
-    if (!userID) return;
-    try {
-      const serializable = (topics || []).map((t: any) => ({
-        ...t,
-        time: t?.time ? new Date(t.time).toISOString() : undefined,
-      }));
-      localStorage.setItem(`${TOPIC_BOOKMARK_KEY_PREFIX}${userID}`, JSON.stringify(serializable));
+      const list: Array<{
+        groupID?: string;
+        groupName: string;
+        groupAvatarUrl?: string;
+        messageId: string;
+        title: string;
+        preview: string;
+        time?: Date;
+      }> = [];
+
+      for (const conv of convList) {
+        const groupProfile = conv?.groupProfile;
+        const isCommunity = groupProfile?.type === 'Community';
+        if (!isCommunity) continue;
+
+        const groupID = groupProfile?.groupID;
+        if (!groupID) continue;
+
+        const conversationID = conv?.conversationID || `GROUP${groupID}`;
+        const ids = await loadTopicBookmarkIdsFromConversation(conversationID);
+        if (!ids || ids.size === 0) continue;
+
+        for (const messageId of ids) {
+          list.push({
+            groupID,
+            groupName: groupProfile?.name || '社群',
+            groupAvatarUrl: groupProfile?.avatar || groupProfile?.faceUrl,
+            messageId,
+            title: '话题',
+            preview: '',
+            time: undefined,
+          });
+        }
+      }
+
+      setTopicBookmarks(list);
     } catch {
-      // localStorage 不可用时静默忽略
+      // 会话列表拉取失败时，不阻塞主流程
+      setTopicBookmarks([]);
     }
   };
 
@@ -203,7 +225,65 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   useEffect(() => {
     if (status !== LoginStatus.SUCCESS) return;
     if (!currentUserId) return;
-    setTopicBookmarks(loadTopicBookmarks(currentUserId));
+
+    refreshTopicBookmarksFromSDK();
+
+    // 监听群/会话列表变化：当社群被解散/退出后，及时清理左侧残留的话题入口
+    const chat: any = (TUIChatEngine as any).chat;
+    const ENGINE: any = TUIChatEngine as any;
+
+    let refreshTimer: any = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        refreshTopicBookmarksFromSDK();
+      }, 300);
+    };
+
+    const handleGroupListUpdated = (event: any) => {
+      const groupList: any[] = event?.data || [];
+      const validGroupIds = new Set(
+        (Array.isArray(groupList) ? groupList : [])
+          .map((g) => g?.groupID)
+          .filter(Boolean),
+      );
+
+      setTopicBookmarks((prev) => prev.filter((t) => !t.groupID || validGroupIds.has(t.groupID)));
+      scheduleRefresh();
+    };
+
+    const handleConversationListUpdated = (event: any) => {
+      const convList: any[] = event?.data || [];
+      if (Array.isArray(convList) && convList.length > 0) {
+        const validCommunityGroupIds = new Set(
+          convList
+            .map((c) => c?.groupProfile)
+            .filter((gp) => gp?.type === 'Community')
+            .map((gp) => gp?.groupID)
+            .filter(Boolean),
+        );
+        setTopicBookmarks((prev) => prev.filter((t) => !t.groupID || validCommunityGroupIds.has(t.groupID)));
+      }
+      scheduleRefresh();
+    };
+
+    if (chat?.on && ENGINE?.EVENT?.GROUP_LIST_UPDATED) {
+      chat.on(ENGINE.EVENT.GROUP_LIST_UPDATED, handleGroupListUpdated);
+    }
+    if (chat?.on && ENGINE?.EVENT?.CONVERSATION_LIST_UPDATED) {
+      chat.on(ENGINE.EVENT.CONVERSATION_LIST_UPDATED, handleConversationListUpdated);
+    }
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      if (chat?.off && ENGINE?.EVENT?.GROUP_LIST_UPDATED) {
+        chat.off(ENGINE.EVENT.GROUP_LIST_UPDATED, handleGroupListUpdated);
+      }
+      if (chat?.off && ENGINE?.EVENT?.CONVERSATION_LIST_UPDATED) {
+        chat.off(ENGINE.EVENT.CONVERSATION_LIST_UPDATED, handleConversationListUpdated);
+      }
+    };
   }, [status, currentUserId]);
 
   // 切换会话时自动关闭侧边栏
@@ -500,7 +580,6 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                   if (!topic) {
                     if (!messageId) return prev;
                     const next = prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
-                    saveTopicBookmarks(currentUserId, next);
                     return next;
                   }
 
@@ -508,11 +587,9 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                   const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
                   if (exists) {
                     const next = prev.map((t) => (`${t.groupID || ''}:${t.messageId}` === key ? topic : t));
-                    saveTopicBookmarks(currentUserId, next);
                     return next;
                   }
                   const next = [topic, ...prev];
-                  saveTopicBookmarks(currentUserId, next);
                   return next;
                 });
               }}
