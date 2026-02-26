@@ -79,6 +79,13 @@ body {
   white-space: nowrap;
 }
 
+.conversation-abstract-emoji {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  display: inline-block;
+}
+
 .chat-layout {
   height: 60vh;
   aspect-ratio: 16 / 9;

@@ -24,7 +24,33 @@ import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
 import { generateGroupAvatarByType, type GroupType } from './utils/groupAvatar';
 import CommunityChatView from './components/CommunityChatView';
 import { loadRuntimeConfig, type RuntimeConfig, type UserEntry } from './utils/runtimeConfig';
+import React from 'react';
+import { emojiBaseUrl, emojiUrlMap } from './utils/tuiEmoji';
 import './App.css';
+
+function renderTextWithTUIEmoji(text: string): React.ReactNode {
+  if (!text) return '';
+  const reg = /(\[.+?\])/g;
+  if (!reg.test(text)) return text;
+
+  const parts = text.split(reg);
+  return parts.map((part, idx) => {
+    const emojiPath = part ? (emojiUrlMap as Record<string, string>)[part] : '';
+    if (emojiPath) {
+      const src = `${emojiBaseUrl}${emojiPath}`;
+      return (
+        <img
+          key={`emoji:${idx}`}
+          className="conversation-abstract-emoji"
+          src={src}
+          alt={part}
+          draggable={false}
+        />
+      );
+    }
+    return <React.Fragment key={`txt:${idx}`}>{part}</React.Fragment>;
+  });
+}
 
 function App() {
   // 语言支持 en-US(default) / zh-CN / ja-JP / ko-KR / zh-TW
@@ -252,7 +278,9 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         <ConversationPreview
           {...props}
           LastMessageAbstract={shouldHide ? '' : (
-            <div className="uikit-conversationPreview__abstract">{displayAbstract || ''}</div>
+            <div className="uikit-conversationPreview__abstract">
+              {renderTextWithTUIEmoji(displayAbstract || '')}
+            </div>
           )}
           LastMessageTimestamp={displayTimeText ? (
             <div className="uikit-conversationPreview__time">{displayTimeText}</div>
