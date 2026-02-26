@@ -1,5 +1,11 @@
 # Rsbuild project
 
+## 页面样式参考
+
+> 该截图展示了当前项目启动后打开页面的整体样式，可作为 UI 对照参考。
+
+![home](./public/home.png)
+
 ## Setup
 
 Install the dependencies:
