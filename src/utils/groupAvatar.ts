@@ -55,15 +55,39 @@ export function generateGroupAvatar(
 }
 
 /**
+ * 可供选择的固定头像列表
+ */
+export const PRESET_GROUP_AVATARS = [
+  { id: 'avatar-1', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=avatar1&backgroundColor=b6e3f4', label: '几何1' },
+  { id: 'avatar-2', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=avatar2&backgroundColor=c0aede', label: '几何2' },
+  { id: 'avatar-3', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=avatar3&backgroundColor=d1d4f9', label: '几何3' },
+  { id: 'avatar-4', url: 'https://api.dicebear.com/7.x/identicon/svg?seed=avatar4&backgroundColor=ffd5dc', label: '几何4' },
+  { id: 'avatar-5', url: 'https://api.dicebear.com/7.x/shapes/svg?seed=shape1&backgroundColor=b6e3f4', label: '形状1' },
+  { id: 'avatar-6', url: 'https://api.dicebear.com/7.x/shapes/svg?seed=shape2&backgroundColor=c0aede', label: '形状2' },
+  { id: 'avatar-7', url: 'https://api.dicebear.com/7.x/shapes/svg?seed=shape3&backgroundColor=d1d4f9', label: '形状3' },
+  { id: 'avatar-8', url: 'https://api.dicebear.com/7.x/shapes/svg?seed=shape4&backgroundColor=ffd5dc', label: '形状4' },
+  { id: 'avatar-work', url: 'https://api.dicebear.com/7.x/bottts/svg?seed=work-fixed-seed&backgroundColor=b6e3f4', label: '工作群默认' },
+  { id: 'avatar-community', url: 'https://api.dicebear.com/7.x/shapes/svg?seed=community-fixed-seed&backgroundColor=ffdfbf', label: '社群默认' },
+];
+
+/**
  * 根据群组类型和名称生成头像 URL
  * @param groupName 群组名称
  * @param groupType 群组类型
  * @returns 头像 URL
  */
 export function generateGroupAvatarByType(
-  groupName: string,
+  _groupName: string,
   groupType: GroupType
 ): string {
-  const style = getAvatarStyleByGroupType(groupType);
-  return generateGroupAvatar(groupName, style);
+  // 根据用户要求，每种群类型固定一种头像，不再随名称随机生成
+  // 数据源来自 DiceBear API
+  if (groupType === 'Work') {
+    return 'https://api.dicebear.com/7.x/bottts/svg?seed=work-fixed-seed&backgroundColor=b6e3f4';
+  }
+  if (groupType === 'Community') {
+    return 'https://api.dicebear.com/7.x/shapes/svg?seed=community-fixed-seed&backgroundColor=ffdfbf';
+  }
+  
+  return 'https://api.dicebear.com/7.x/identicon/svg?seed=default&backgroundColor=d1d4f9';
 }

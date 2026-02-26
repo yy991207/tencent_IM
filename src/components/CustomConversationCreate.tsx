@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { IconAdd, IconClose, IconSearch } from '@tencentcloud/uikit-base-component-react';
+import { IconAdd, IconClose, IconSearch, IconUsergroup } from '@tencentcloud/uikit-base-component-react';
 import { useContactListState, useConversationListState, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationCreateProps } from '@tencentcloud/chat-uikit-react';
 import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
+import { PRESET_GROUP_AVATARS, generateGroupAvatarByType } from '../utils/groupAvatar';
 
 type GroupTypeKey = 'Work' | 'Community';
 
@@ -37,6 +38,14 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState<string>('');
+
+  // 当切换群类型时，更新默认头像
+  useEffect(() => {
+    const defaultAvatar = generateGroupAvatarByType('', groupTypeKey);
+    setSelectedAvatar(defaultAvatar);
+  }, [groupTypeKey]);
 
   useEffect(() => {
     onChangeCreateModelVisible?.(open);
@@ -107,6 +116,7 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
       name,
       type: groupTypeValue,
       memberList,
+      avatar: selectedAvatar,
       // groupID 不传：交给 SDK 自动生成
     };
 
@@ -170,6 +180,28 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
               </div>
 
               <div className="custom-create-row">
+                <div className="custom-create-label">群头像</div>
+                <div className="custom-create-controls">
+                  <div className="custom-create-avatar-wrapper">
+                    <div className="custom-create-avatar-preview">
+                      {selectedAvatar ? (
+                        <img src={selectedAvatar} alt="群头像" />
+                      ) : (
+                        <IconUsergroup size="24px" />
+                      )}
+                    </div>
+                    <button 
+                      type="button" 
+                      className="custom-create-avatar-edit"
+                      onClick={() => setShowAvatarPicker(true)}
+                    >
+                      点击修改
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="custom-create-row">
                 <div className="custom-create-label">群名称</div>
                 <div className="custom-create-controls">
                   <input
@@ -180,6 +212,31 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
                   />
                 </div>
               </div>
+
+              {showAvatarPicker && (
+                <div className="custom-avatar-picker-overlay" onClick={() => setShowAvatarPicker(false)}>
+                  <div className="custom-avatar-picker-modal" onClick={e => e.stopPropagation()}>
+                    <div className="custom-avatar-picker-header">
+                      <span>选择群头像</span>
+                      <button onClick={() => setShowAvatarPicker(false)}><IconClose size="14px" /></button>
+                    </div>
+                    <div className="custom-avatar-picker-list">
+                      {PRESET_GROUP_AVATARS.map(avatar => (
+                        <button 
+                          key={avatar.id}
+                          className={`custom-avatar-picker-item ${selectedAvatar === avatar.url ? 'active' : ''}`}
+                          onClick={() => {
+                            setSelectedAvatar(avatar.url);
+                            setShowAvatarPicker(false);
+                          }}
+                        >
+                          <img src={avatar.url} alt={avatar.label} title={avatar.label} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="custom-create-row custom-create-members">
                 <div className="custom-create-label">群成员</div>
