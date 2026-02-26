@@ -1,8 +1,20 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ConversationList, ConversationPreview, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft } from 'react-icons/fi';
+import {
+  type CommunityPost,
+  type CommunityLikeUser,
+  loadCommunityMessages,
+  sendPost as sdkSendPost,
+  sendComment as sdkSendComment,
+  toggleLike as sdkToggleLike,
+  forwardPost as sdkForwardPost,
+  loadBookmarks,
+  saveBookmarks,
+  subscribeMessages,
+} from '../utils/communityMessageService';
 
 interface CommunityChatViewProps {
   groupID?: string;           // 社群 ID
@@ -27,28 +39,6 @@ interface CommunityChatViewProps {
   } | null, messageId?: string) => void;
 }
 
-interface CommentItem {
-  id: string;
-  content: string;
-  sender: string;
-  time: Date;
-}
-
-interface Message {
-  id: string;
-  content: string;
-  sender: string;
-  time: Date;
-  likes?: LikeUser[];      // 点赞的用户列表
-  comments?: CommentItem[];
-  bookmarked?: boolean;  // 是否已收藏
-}
-
-interface LikeUser {
-  userId: string;
-  userName: string;
-  avatarUrl?: string;
-}
 
 /**
  * 社群聊天页面组件
@@ -67,11 +57,11 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const { loginUserInfo } = useLoginState();
 
   const [showMessageInput, setShowMessageInput] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set());
-  const [bookmarkedMessages, setBookmarkedMessages] = useState<Set<string>>(new Set());
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
   const [activeCommentMessageId, setActiveCommentMessageId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [commentDetailMessageId, setCommentDetailMessageId] = useState<string | null>(null);
@@ -79,8 +69,22 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [shareMessageId, setShareMessageId] = useState<string | null>(null);
   const [shareSearchValue, setShareSearchValue] = useState('');
 
+  const currentUserId = loginUserInfo?.userId || '';
+
+  // 从帖子数据派生当前用户的点赞集合
+  const likedMessageIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of posts) {
+      if (p.likes.some((l) => l.userId === currentUserId)) {
+        set.add(p.id);
+      }
+    }
+    return set;
+  }, [posts, currentUserId]);
+
   const onCommunitySummaryChangeRef = useRef(onCommunitySummaryChange);
   const lastReportedSummaryRef = useRef<{ abstract: string; time: number } | null>(null);
+  const lastReportedTopicPreviewRef = useRef<Map<string, string>>(new Map());
 
   // 滚动到底部
   const scrollToBottom = () => {
@@ -89,17 +93,53 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [posts]);
 
   useEffect(() => {
     onCommunitySummaryChangeRef.current = onCommunitySummaryChange;
   }, [onCommunitySummaryChange]);
 
+  // 当帖子/评论变化时，同步更新已收藏帖子的“话题入口”预览文案与时间
+  // 说明：收藏的 messageId 集合本身已通过 localStorage 持久化，但左侧入口展示的 preview/time 需要跟随最新评论变化
   useEffect(() => {
     if (!groupID) return;
-    if (messages.length === 0) return;
+    if (!onTopicBookmarkChange) return;
 
-    const lastPost = messages[messages.length - 1];
+    const bookmarked = bookmarkedIds;
+    if (!bookmarked || bookmarked.size === 0) return;
+
+    for (const p of posts) {
+      if (!bookmarked.has(p.id)) continue;
+
+      const postTitle = `${p.sender}：${p.content}`;
+      const title = postTitle.length > 16 ? `${postTitle.slice(0, 16)}...` : postTitle;
+      const comments = p.comments || [];
+      const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
+      const preview = lastComment ? `${lastComment.sender}：${lastComment.content}` : '暂无评论';
+      const time = lastComment?.time || p.time;
+
+      const reportKey = `${preview}__${time?.getTime?.() || 0}`;
+      const prevKey = lastReportedTopicPreviewRef.current.get(p.id);
+      if (prevKey === reportKey) continue;
+      lastReportedTopicPreviewRef.current.set(p.id, reportKey);
+
+      onTopicBookmarkChange({
+        groupID,
+        groupName,
+        groupAvatarUrl,
+        messageId: p.id,
+        title,
+        preview,
+        time,
+      });
+    }
+  }, [groupID, groupName, groupAvatarUrl, posts, bookmarkedIds, onTopicBookmarkChange]);
+
+  useEffect(() => {
+    if (!groupID) return;
+    if (posts.length === 0) return;
+
+    const lastPost = posts[posts.length - 1];
     const comments = lastPost.comments || [];
     const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
     const lastMessageAbstract = lastComment
@@ -122,7 +162,66 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       lastMessageAbstract,
       lastMessageTime,
     });
-  }, [groupID, messages]);
+  }, [groupID, posts]);
+
+  // ─── 从 SDK 加载历史消息并订阅实时更新 ────────────────────
+  useEffect(() => {
+    if (!groupID) return;
+
+    let cancelled = false;
+
+    const doLoad = async () => {
+      setIsLoading(true);
+      try {
+        const savedBookmarks = loadBookmarks(currentUserId);
+        setBookmarkedIds(savedBookmarks);
+
+        const loadedPosts = await loadCommunityMessages(groupID, savedBookmarks);
+        if (!cancelled) setPosts(loadedPosts);
+      } catch (err) {
+        console.error('[Community] Failed to load messages:', err);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    doLoad();
+
+    // 订阅其他用户发送的新帖子 / 新评论 / 点赞修改
+    const unsubscribe = subscribeMessages(
+      groupID,
+      // 新帖子
+      (newPost) => {
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === newPost.id)) return prev;
+          return [...prev, newPost];
+        });
+      },
+      // 新评论
+      (newComment) => {
+        setPosts((prev) =>
+          prev.map((p) => {
+            if (p.id !== newComment.postMessageID) return p;
+            if (p.comments.some((c) => c.id === newComment.id)) return p;
+            return { ...p, comments: [...p.comments, newComment] };
+          }),
+        );
+      },
+      // 帖子修改（点赞同步）
+      (postId, likes, rawMessage) => {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId ? { ...p, likes, _rawMessage: rawMessage } : p,
+          ),
+        );
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [groupID, currentUserId]);
 
   useEffect(() => {
     if (!openCommentDetailMessageId) return;
@@ -130,69 +229,59 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setActiveCommentMessageId(openCommentDetailMessageId);
   }, [openCommentDetailMessageId]);
 
-  // 处理发送留言
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+  // 处理发送留言（通过 SDK 发送自定义消息）
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || !groupID) return;
 
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      content: inputValue.trim(),
-      sender: '我',
-      time: new Date(),
-      likes: [],
-      comments: [],
-      bookmarked: false,
-    };
+    try {
+      const res = await sdkSendPost(groupID, inputValue.trim());
+      const sent = res?.data?.message;
 
-    setMessages((prev) => [...prev, newMessage]);
-    setInputValue('');
-    setShowMessageInput(false);
-  };
-
-  // 处理点赞
-  const handleLike = (messageId: string) => {
-    setLikedMessages((prev) => {
-      const newSet = new Set(prev);
-      const currentUserId = loginUserInfo?.userId || 'current-user';
-      const currentUserName = loginUserInfo?.userName || loginUserInfo?.userId || '我';
-      const currentUserAvatarUrl = loginUserInfo?.avatarUrl;
-
-      if (newSet.has(messageId)) {
-        newSet.delete(messageId);
-        // 取消点赞
-        setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === messageId
-              ? { ...msg, likes: (msg.likes || []).filter((u) => u.userId !== currentUserId) }
-              : msg
-          )
-        );
-      } else {
-        newSet.add(messageId);
-        // 添加点赞
-        setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === messageId
-              ? {
-                  ...msg,
-                  likes: [
-                    ...(msg.likes || []),
-                    {
-                      userId: currentUserId,
-                      userName: currentUserName,
-                      avatarUrl: currentUserAvatarUrl,
-                    },
-                  ],
-                }
-              : msg
-          )
-        );
+      if (sent) {
+        const newPost: CommunityPost = {
+          id: sent.ID,
+          content: inputValue.trim(),
+          sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
+          senderID: loginUserInfo?.userId || '',
+          avatarUrl: loginUserInfo?.avatarUrl || '',
+          time: new Date((sent.time || Date.now() / 1000) * 1000),
+          likes: [],
+          comments: [],
+          bookmarked: false,
+          _rawMessage: sent,
+        };
+        setPosts((prev) => [...prev, newPost]);
       }
-      return newSet;
-    });
+
+      setInputValue('');
+      setShowMessageInput(false);
+    } catch (err) {
+      console.error('[Community] Failed to send post:', err);
+      alert('发送失败，请重试');
+    }
   };
 
-  const renderLikeInfo = (likeUsers: LikeUser[]) => {
+  // 处理点赞（通过 SDK modifyMessage 更新 cloudCustomData）
+  const handleLike = async (postId: string) => {
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+
+    try {
+      const { likes } = await sdkToggleLike(
+        post._rawMessage,
+        currentUserId,
+        loginUserInfo?.userName || loginUserInfo?.userId || '我',
+        loginUserInfo?.avatarUrl,
+      );
+      setPosts((prev) =>
+        prev.map((p) => (p.id === postId ? { ...p, likes } : p)),
+      );
+    } catch (err) {
+      console.error('[Community] Failed to toggle like:', err);
+    }
+  };
+
+  const renderLikeInfo = (likeUsers: CommunityLikeUser[]) => {
     if (!likeUsers || likeUsers.length === 0) return null;
 
     return (
@@ -213,25 +302,41 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setCommentDraft('');
   };
 
-  const handleSendComment = (messageId: string) => {
+  const handleSendComment = async (postId: string) => {
     const content = commentDraft.trim();
-    if (!content) return;
+    if (!content || !groupID) return;
 
-    const newComment: CommentItem = {
-      id: `cmt-${Date.now()}`,
-      content,
-      sender: '我',
-      time: new Date(),
-    };
+    try {
+      const res = await sdkSendComment(groupID, postId, content);
+      const sent = res?.data?.message;
 
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId
-          ? { ...m, comments: [...(m.comments || []), newComment] }
-          : m
-      )
-    );
-    setCommentDraft('');
+      if (sent) {
+        setPosts((prev) =>
+          prev.map((p) => {
+            if (p.id !== postId) return p;
+            if (p.comments.some((c) => c.id === sent.ID)) return p;
+            return {
+              ...p,
+              comments: [
+                ...p.comments,
+                {
+                  id: sent.ID,
+                  content,
+                  sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
+                  senderID: loginUserInfo?.userId || '',
+                  time: new Date((sent.time || Date.now() / 1000) * 1000),
+                  postMessageID: postId,
+                },
+              ],
+            };
+          }),
+        );
+      }
+      setCommentDraft('');
+    } catch (err) {
+      console.error('[Community] Failed to send comment:', err);
+      alert('评论发送失败');
+    }
   };
 
   const handleOpenCommentDetail = (messageId: string) => {
@@ -257,15 +362,26 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setShareSearchValue('');
   };
 
-  const handleSelectShareTarget = (conversation: any) => {
+  const handleSelectShareTarget = async (conversation: any) => {
+    const convID = conversation?.conversationID;
     const name =
       conversation?.groupProfile?.name ||
       conversation?.userProfile?.nick ||
       conversation?.userProfile?.userID ||
-      conversation?.conversationID ||
+      convID ||
       '未知会话';
-    if (shareMessageId) {
-      alert(`消息已转发给 "${name}"`);
+
+    if (shareMessageId && convID) {
+      const post = posts.find((p) => p.id === shareMessageId);
+      if (post) {
+        try {
+          await sdkForwardPost(convID, groupName, post.content);
+          alert(`消息已转发给 "${name}"`);
+        } catch (err) {
+          console.error('[Community] Forward failed:', err);
+          alert('转发失败');
+        }
+      }
     }
     handleCloseShareModal();
   };
@@ -283,50 +399,49 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     );
   };
 
-  // 处理收藏
-  const handleBookmark = (messageId: string) => {
-    setBookmarkedMessages((prev) => {
+  // 处理收藏（localStorage 持久化）
+  const handleBookmark = (postId: string) => {
+    setBookmarkedIds((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(messageId)) {
-        newSet.delete(messageId);
-        // 取消收藏
-        setMessages((msgs) =>
-          msgs.map((msg) =>
-            msg.id === messageId ? { ...msg, bookmarked: false } : msg
-          )
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+        setPosts((prevPosts) =>
+          prevPosts.map((p) =>
+            p.id === postId ? { ...p, bookmarked: false } : p,
+          ),
         );
-
-        onTopicBookmarkChange?.(null, messageId);
+        onTopicBookmarkChange?.(null, postId);
       } else {
-        newSet.add(messageId);
-        // 添加收藏
-        setMessages((msgs) =>
-          msgs.map((msg) => {
-            if (msg.id !== messageId) return msg;
+        newSet.add(postId);
+        setPosts((prevPosts) =>
+          prevPosts.map((p) => {
+            if (p.id !== postId) return p;
 
-            const postTitle = `${msg.sender}：${msg.content}`;
+            const postTitle = `${p.sender}：${p.content}`;
             const title = postTitle.length > 16 ? `${postTitle.slice(0, 16)}...` : postTitle;
-            const comments = msg.comments || [];
+            const comments = p.comments || [];
             const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
             const preview = lastComment
               ? `${lastComment.sender}：${lastComment.content}`
               : '暂无评论';
-            const time = lastComment?.time || msg.time;
+            const time = lastComment?.time || p.time;
 
             onTopicBookmarkChange?.({
               groupID,
               groupName,
               groupAvatarUrl,
-              messageId,
+              messageId: postId,
               title,
               preview,
               time,
             });
 
-            return { ...msg, bookmarked: true };
-          })
+            return { ...p, bookmarked: true };
+          }),
         );
       }
+
+      saveBookmarks(currentUserId, newSet);
       return newSet;
     });
   };
@@ -379,14 +494,16 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
       {/* 消息列表区域 */}
       <div className="community-message-list">
-        {messages.length === 0 ? (
+        {isLoading ? (
+          <div className="empty-message-tip">加载中…</div>
+        ) : posts.length === 0 ? (
           <div className="empty-message-tip">
             暂无留言，快来发布第一条留言吧～
           </div>
         ) : (
-          messages.map((msg) => {
-            const isLiked = likedMessages.has(msg.id);
-            const isBookmarked = bookmarkedMessages.has(msg.id) || !!msg.bookmarked;
+          posts.map((msg) => {
+            const isLiked = likedMessageIds.has(msg.id);
+            const isBookmarked = bookmarkedIds.has(msg.id) || !!msg.bookmarked;
             const likeCount = msg.likes?.length || 0;
             const commentCount = msg.comments?.length || 0;
             const isCommentOpen = activeCommentMessageId === msg.id;
@@ -396,7 +513,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             return (
               <div key={msg.id} className="message-item">
                 <div className="message-avatar">
-                  {msg.sender === '我' ? <FiUser /> : <FiUsers />}
+                  {msg.senderID === currentUserId ? <FiUser /> : <FiUsers />}
                 </div>
                 <div className="message-content">
                   <div className="message-header">
@@ -508,14 +625,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         <div className="comment-detail-overlay">
           <div className="comment-detail-panel">
             <div className="comment-detail-header">
-              <div className="comment-detail-title">评论</div>
+              <div className="comment-detail-title"></div>
               <button className="comment-detail-close" onClick={handleCloseCommentDetail} type="button">
                 <FiX />
               </button>
             </div>
 
             {(() => {
-              const msg = messages.find((m) => m.id === commentDetailMessageId);
+              const msg = posts.find((m) => m.id === commentDetailMessageId);
               if (!msg) return null;
 
               const likeUsers = msg.likes || [];
@@ -646,7 +763,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         .community-chat-view {
           display: flex;
           flex-direction: column;
-          height: 100%;
+          flex: 1;
+          min-height: 0;
           width: 100%;
           background: #f5f5f5;
           position: relative;
@@ -692,6 +810,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .community-message-list {
           flex: 1;
+          min-height: 0;
           overflow-y: auto;
           padding: 20px;
         }
@@ -918,7 +1037,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           cursor: pointer;
           color: #666;
           padding: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
         }
@@ -931,6 +1050,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           flex-direction: column;
           gap: 12px;
+          min-height: 0;
         }
 
         .comment-detail-post {

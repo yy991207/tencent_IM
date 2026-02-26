@@ -41,6 +41,7 @@ function ChatApp() {
   const [showCommunityView, setShowCommunityView] = useState(false);
   const [currentCommunity, setCurrentCommunity] = useState<{ groupID: string; groupName: string; groupAvatarUrl?: string } | null>(null);
   const [openCommunityCommentDetailMessageId, setOpenCommunityCommentDetailMessageId] = useState<string | null>(null);
+  const { loginUserInfo } = useLoginState();
   const [topicBookmarks, setTopicBookmarks] = useState<Array<{
     groupID?: string;
     groupName: string;
@@ -74,6 +75,41 @@ function ChatApp() {
     userSig: 'eJwtjEEKwjAQAP*yZ6mbENIY8CSeLBZaUXssZC2LWGMTTEX8u9D2ODMwXzgVdfamASzIDGE1MTvqI9940pFCRBRLCu7ees8OrNCIQuZCmblEfhBYkediI6VCNVsaPQ8EVqMyiMuDO7BwLl6HD7UVtbsUr7o3VdOE8bhObkgXXyQ2sg77Upf43MLvDyItMg8_', // string 类型
   });
 
+  const currentUserId = loginUserInfo?.userId || '';
+
+  const TOPIC_BOOKMARK_KEY_PREFIX = 'community_topic_bookmarks_';
+
+  const loadTopicBookmarks = (userID: string) => {
+    if (!userID) return [];
+    try {
+      const raw = localStorage.getItem(`${TOPIC_BOOKMARK_KEY_PREFIX}${userID}`);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((t: any) => ({
+          ...t,
+          time: t?.time ? new Date(t.time) : new Date(),
+        }))
+        .filter((t: any) => t && t.messageId);
+    } catch {
+      return [];
+    }
+  };
+
+  const saveTopicBookmarks = (userID: string, topics: any[]) => {
+    if (!userID) return;
+    try {
+      const serializable = (topics || []).map((t: any) => ({
+        ...t,
+        time: t?.time ? new Date(t.time).toISOString() : undefined,
+      }));
+      localStorage.setItem(`${TOPIC_BOOKMARK_KEY_PREFIX}${userID}`, JSON.stringify(serializable));
+    } catch {
+      // localStorage 不可用时静默忽略
+    }
+  };
+
   const { setActiveConversation, activeConversation } = useConversationListState();
 
   // 初始化默认会话
@@ -84,6 +120,13 @@ function ChatApp() {
       setActiveConversation(conversationID);
     }
   }, [status, setActiveConversation]);
+
+  // 登录成功后恢复“话题收藏入口”（避免刷新后左侧入口丢失）
+  useEffect(() => {
+    if (status !== LoginStatus.SUCCESS) return;
+    if (!currentUserId) return;
+    setTopicBookmarks(loadTopicBookmarks(currentUserId));
+  }, [status, currentUserId]);
 
   // 切换会话时自动关闭侧边栏
   useLayoutEffect(() => {
@@ -326,13 +369,21 @@ function ChatApp() {
                 setTopicBookmarks((prev) => {
                   if (!topic) {
                     if (!messageId) return prev;
-                    return prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+                    const next = prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+                    saveTopicBookmarks(currentUserId, next);
+                    return next;
                   }
 
                   const key = `${topic.groupID || ''}:${topic.messageId}`;
                   const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
-                  if (exists) return prev;
-                  return [topic, ...prev];
+                  if (exists) {
+                    const next = prev.map((t) => (`${t.groupID || ''}:${t.messageId}` === key ? topic : t));
+                    saveTopicBookmarks(currentUserId, next);
+                    return next;
+                  }
+                  const next = [topic, ...prev];
+                  saveTopicBookmarks(currentUserId, next);
+                  return next;
                 });
               }}
             />
