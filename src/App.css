@@ -107,8 +107,62 @@ body {
   width: 300px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--uikit-theme-light-stroke-color-primary);
+  height: 100%;
   overflow: hidden;
+  border-right: 1px solid var(--uikit-theme-light-stroke-color-primary);
+  flex-shrink: 0; /* 关键：防止面板被挤压 */
+}
+
+/* 强制内部的 TUIKit 组件占据剩余高度并提供滚动 */
+.conversation-list-panel > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.conversation-list-panel .uikit-conversationList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto !important; /* 兜底：真实存在的滚动容器，确保一定可滚动 */
+  overflow-x: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
+.conversation-list-panel .uikit-conversationListHeader {
+  flex-shrink: 0 !important;
+  height: auto !important;
+  min-height: 40px;
+  position: sticky; /* 粘性布局 */
+  top: 0;
+  z-index: 10;
+  background: inherit;
+}
+
+.conversation-list-panel .uikit-conversationListContent {
+  flex: 1;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  min-height: 0;
+  /* 确保滚动条样式可见 */
+  scrollbar-width: thin;
+}
+
+/* 兜底：如果 SDK 没有提供 uikit-conversationListContent 节点，确保内容区域不会把 Header 挤没 */
+.conversation-list-panel .uikit-conversationListHeader + * {
+  min-height: 0;
+}
+
+.conversation-list-panel .uikit-conversationListContent::-webkit-scrollbar {
+  width: 4px;
+}
+
+.conversation-list-panel .uikit-conversationListContent::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
 }
 
 .conversation-list-panel .uikit-conversationPreview__title {
