@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ConversationList, ConversationPreview, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
-import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo } from 'react-icons/fi';
+import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch } from 'react-icons/fi';
 import MDEditor from '@uiw/react-md-editor';
 import {
   type CommunityPost,
@@ -17,6 +17,7 @@ import {
   subscribeMessages,
   getGroupProfile,
   getGroupRobotCount,
+  getGroupMembers,
 } from '../utils/communityMessageService';
 
 interface CommunityChatViewProps {
@@ -154,6 +155,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [activeTab, setActiveTab] = useState<'all' | 'subscribed'>('all');
   const [groupProfile, setGroupProfile] = useState<any>(null);
   const [robotCount, setRobotCount] = useState(0);
+  const [showMemberList, setShowMemberList] = useState(false);
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [memberSearchValue, setMemberSearchValue] = useState('');
 
   const currentUserId = loginUserInfo?.userId || '';
 
@@ -325,6 +329,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       }
       const bots = await getGroupRobotCount(groupID);
       setRobotCount(bots);
+      
+      const members = await getGroupMembers(groupID);
+      setGroupMembers(members);
     };
     fetchGroupInfo();
   }, [groupID]);
@@ -580,7 +587,11 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         )}
         <div className="header-info-row">
           <div className="header-stats">
-            <div className="stat-item" title="群成员">
+            <div
+              className="stat-item clickable"
+              title="查看成员列表"
+              onClick={() => setShowMemberList(true)}
+            >
               <FiUsers />
               <span>{groupProfile?.memberCount || 0}</span>
             </div>
@@ -930,6 +941,62 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         <FiPlus />
       </button>
 
+      {/* 群成员侧边栏 */}
+      {showMemberList && (
+        <div className="member-sidebar-overlay" onClick={() => setShowMemberList(false)}>
+          <div className="member-sidebar" onClick={(e) => e.stopPropagation()}>
+            <div className="member-sidebar-header">
+              <span className="member-sidebar-title">群成员</span>
+              <button className="member-sidebar-close" onClick={() => setShowMemberList(false)}>
+                <FiX />
+              </button>
+            </div>
+            <div className="member-sidebar-search">
+              <div className="member-search-input-wrapper">
+                <FiSearch className="member-search-icon" />
+                <input
+                  className="member-search-input"
+                  placeholder="搜索群成员"
+                  value={memberSearchValue}
+                  onChange={(e) => setMemberSearchValue(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="member-sidebar-list">
+              {groupMembers
+                .filter(m =>
+                  !memberSearchValue ||
+                  (m.nick || m.userID || '').toLowerCase().includes(memberSearchValue.toLowerCase())
+                )
+                .map((member) => (
+                  <div key={member.userID} className="member-list-item">
+                    <div className="member-item-avatar">
+                      {member.avatar ? (
+                        <img src={member.avatar} alt="" />
+                      ) : (
+                        <div className="member-avatar-fallback">
+                          {member.userID.startsWith('@RBT#') ? <FiCpu /> : <FiUser />}
+                        </div>
+                      )}
+                    </div>
+                    <div className="member-item-info">
+                      <div className="member-item-name">
+                        {member.nick || member.userID}
+                        {member.role === 'Owner' && <span className="role-tag owner">群主</span>}
+                        {member.role === 'Admin' && <span className="role-tag admin">管理员</span>}
+                        {member.userID.startsWith('@RBT#') && <span className="role-tag bot">机器人</span>}
+                      </div>
+                      <div className="member-item-status">
+                        {member.userID.startsWith('@RBT#') ? '外部' : '在线'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 自定义样式 */}
       <style>{`
         .community-chat-view {
@@ -1007,6 +1074,15 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           gap: 4px;
           color: #8c8c8c;
           font-size: 13px;
+        }
+
+        .stat-item.clickable {
+          cursor: pointer;
+          transition: color 0.2s;
+        }
+
+        .stat-item.clickable:hover {
+          color: #1890ff;
         }
 
         .stat-item svg {
@@ -1976,6 +2052,174 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .floating-add-button:active {
           transform: scale(0.95);
+        }
+
+        /* 群成员侧边栏样式 */
+        .member-sidebar-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.1);
+          z-index: 1000;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .member-sidebar {
+          width: 280px;
+          height: 100%;
+          background: #fff;
+          box-shadow: -2px 0 8px rgba(0, 0, 0, 0.05);
+          display: flex;
+          flex-direction: column;
+          animation: slideInRight 0.3s ease-out;
+        }
+
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+
+        .member-sidebar-header {
+          padding: 16px;
+          border-bottom: 1px solid #f0f0f0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .member-sidebar-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: #262626;
+        }
+
+        .member-sidebar-close {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #8c8c8c;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+        }
+
+        .member-sidebar-close:hover {
+          color: #595959;
+        }
+
+        .member-sidebar-search {
+          padding: 12px 16px;
+        }
+
+        .member-search-input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .member-search-icon {
+          position: absolute;
+          left: 10px;
+          color: #bfbfbf;
+          font-size: 14px;
+        }
+
+        .member-search-input {
+          width: 100%;
+          height: 32px;
+          background: #f5f5f5;
+          border: 1px solid transparent;
+          border-radius: 4px;
+          padding: 0 10px 0 32px;
+          font-size: 13px;
+          outline: none;
+          transition: all 0.2s;
+        }
+
+        .member-search-input:focus {
+          background: #fff;
+          border-color: #1890ff;
+        }
+
+        .member-sidebar-list {
+          flex: 1;
+          overflow-y: auto;
+          padding: 8px 0;
+        }
+
+        .member-list-item {
+          display: flex;
+          align-items: center;
+          padding: 10px 16px;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .member-list-item:hover {
+          background: #f5f5f5;
+        }
+
+        .member-item-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          margin-right: 12px;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+
+        .member-item-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .member-avatar-fallback {
+          width: 100%;
+          height: 100%;
+          background: #f0f2f5;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #8c8c8c;
+          font-size: 16px;
+        }
+
+        .member-item-info {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .member-item-name {
+          font-size: 14px;
+          color: #262626;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .role-tag {
+          font-size: 10px;
+          padding: 0 4px;
+          border-radius: 2px;
+          flex-shrink: 0;
+        }
+
+        .role-tag.owner { background: #fff7e6; color: #fa8c16; border: 1px solid #ffe7ba; }
+        .role-tag.admin { background: #f0f5ff; color: #1d39c4; border: 1px solid #adc6ff; }
+        .role-tag.bot { background: #f6ffed; color: #389e0d; border: 1px solid #b7eb8f; }
+
+        .member-item-status {
+          font-size: 11px;
+          color: #bfbfbf;
+          margin-top: 2px;
         }
       `}</style>
     </div>

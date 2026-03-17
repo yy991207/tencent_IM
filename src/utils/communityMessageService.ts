@@ -409,6 +409,20 @@ export async function getGroupRobotCount(groupID: string): Promise<number> {
   }
 }
 
+/**
+ * 获取群成员列表
+ */
+export async function getGroupMembers(groupID: string): Promise<any[]> {
+  const chat = getChat();
+  try {
+    const res = await chat.getGroupMemberList({ groupID, count: 100, offset: 0 });
+    return res.data.memberList || [];
+  } catch (err) {
+    console.error('[Community] Failed to get group members:', err);
+    return [];
+  }
+}
+
 // ─── 收藏（localStorage）────────────────────────────────────
 
 const BOOKMARK_KEY_PREFIX = 'community_bookmarks_';
