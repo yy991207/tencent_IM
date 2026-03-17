@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ConversationList, ConversationPreview, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
-import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft } from 'react-icons/fi';
+import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
 import {
   type CommunityPost,
@@ -15,6 +15,8 @@ import {
   loadTopicBookmarkIdsFromConversation,
   saveTopicBookmarkIdsToConversation,
   subscribeMessages,
+  getGroupProfile,
+  getGroupRobotCount,
 } from '../utils/communityMessageService';
 
 interface CommunityChatViewProps {
@@ -94,6 +96,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareMessageId, setShareMessageId] = useState<string | null>(null);
   const [shareSearchValue, setShareSearchValue] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'subscribed'>('all');
+  const [groupProfile, setGroupProfile] = useState<any>(null);
+  const [robotCount, setRobotCount] = useState(0);
 
   const currentUserId = loginUserInfo?.userId || '';
 
@@ -255,6 +260,19 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setCommentDetailMessageId(openCommentDetailMessageId);
     setActiveCommentMessageId(openCommentDetailMessageId);
   }, [openCommentDetailMessageId]);
+
+  useEffect(() => {
+    if (!groupID) return;
+    const fetchGroupInfo = async () => {
+      const profile = await getGroupProfile(groupID);
+      if (profile) {
+        setGroupProfile(profile);
+      }
+      const bots = await getGroupRobotCount(groupID);
+      setRobotCount(bots);
+    };
+    fetchGroupInfo();
+  }, [groupID]);
 
   // 处理发送留言（通过 SDK 发送自定义消息）
   const handleSendMessage = async () => {
@@ -479,23 +497,69 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   // 格式化时间
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('zh-CN', {
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const timeStr = date.toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit',
     });
+    return `${month}月${day}日 ${timeStr}`;
   };
+
+  const displayPosts = useMemo(() => {
+    if (activeTab === 'all') return posts;
+    return posts.filter(post => bookmarkedIds.has(post.id) || post.bookmarked);
+  }, [posts, activeTab, bookmarkedIds]);
 
   return (
     <div className="community-chat-view">
       {/* 头部 */}
-      {!embedded && (
-        <div className="community-chat-header">
-          <button className="back-button" onClick={onBack}>
-            <FiArrowLeft />
-          </button>
-          <span className="group-name">{groupName}</span>
+      {/* 头部 */}
+      <div className="community-chat-header">
+        {!embedded && (
+          <div className="header-top-row">
+            <button className="back-button" onClick={onBack}>
+              <FiArrowLeft />
+            </button>
+          </div>
+        )}
+        <div className="header-info-row">
+          <div className="header-stats">
+            <div className="stat-item" title="群成员">
+              <FiUsers />
+              <span>{groupProfile?.memberCount || 0}</span>
+            </div>
+            <div className="stat-item" title="机器人">
+              <FiCpu />
+              <span>{robotCount}</span>
+            </div>
+          </div>
+          <div className="header-divider"></div>
+          <div className="header-announcement" title="群公告">
+            <FiInfo className="announcement-icon" />
+            <span className="announcement-text">
+              {groupProfile?.notification || groupProfile?.introduction || '暂无群描述'}
+            </span>
+            <span className="external-tag">外部</span>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* 标签页切换 */}
+      <div className="community-tabs">
+        <button
+          className={`community-tab ${activeTab === 'all' ? 'active' : ''}`}
+          onClick={() => setActiveTab('all')}
+        >
+          全部
+        </button>
+        <button
+          className={`community-tab ${activeTab === 'subscribed' ? 'active' : ''}`}
+          onClick={() => setActiveTab('subscribed')}
+        >
+          我订阅的
+        </button>
+      </div>
 
       {isShareModalOpen && (
         <div className="share-modal-overlay">
@@ -527,12 +591,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       <div className="community-message-list">
         {isLoading ? (
           <div className="empty-message-tip">加载中…</div>
-        ) : posts.length === 0 ? (
+        ) : displayPosts.length === 0 ? (
           <div className="empty-message-tip">
-            暂无留言，快来发布第一条留言吧～
+            {activeTab === 'all' ? '暂无留言，快来发布第一条留言吧～' : '暂无订阅的留言'}
           </div>
         ) : (
-          posts.map((msg) => {
+          displayPosts.map((msg) => {
             const isLiked = likedMessageIds.has(msg.id);
             const isBookmarked = bookmarkedIds.has(msg.id) || !!msg.bookmarked;
             const likeCount = msg.likes?.length || 0;
@@ -556,7 +620,38 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                   <div className="message-bubble markdown-body">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
-                  {renderLikeInfo(msg.likes || [])}
+
+                  {/* 默认显示的评论预览区 */}
+                  {previewComments.length > 0 && (
+                    <div className="comment-panel">
+                      <div className="comment-preview">
+                        {earlierCount > 0 && (
+                          <button
+                            className="comment-more"
+                            onClick={() => handleOpenCommentDetail(msg.id)}
+                            type="button"
+                          >
+                            查看更早 {earlierCount} 条回复
+                          </button>
+                        )}
+                        {previewComments.map((c) => (
+                          <div key={c.id} className="comment-item">
+                            <span className="comment-sender">{c.sender}：</span>
+                            {/* 评论预览：支持 Markdown 渲染 */}
+                            <span className="comment-content markdown-body markdown-compact">
+                              <ReactMarkdown>{c.content}</ReactMarkdown>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* 点赞信息显示在评论区内部底部 */}
+                      {renderLikeInfo(msg.likes || [])}
+                    </div>
+                  )}
+
+                  {/* 如果没有评论，但有点赞，则单独显示点赞信息 */}
+                  {previewComments.length === 0 && renderLikeInfo(msg.likes || [])}
+
                   <div className="message-interactions">
                     {isLiked ? (
                       <button
@@ -607,31 +702,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     </button>
                   </div>
 
+                  {/* 点击评论按钮后展开的输入框 */}
                   {isCommentOpen && (
-                    <div className="comment-panel">
-                      {previewComments.length > 0 && (
-                        <div className="comment-preview">
-                          {earlierCount > 0 && (
-                            <button
-                              className="comment-more"
-                              onClick={() => handleOpenCommentDetail(msg.id)}
-                              type="button"
-                            >
-                              查看更早{earlierCount}条回复
-                            </button>
-                          )}
-                          {previewComments.map((c) => (
-                            <div key={c.id} className="comment-item">
-                              <span className="comment-sender">{c.sender}：</span>
-                              {/* 评论预览：支持 Markdown 渲染 */}
-                              <span className="comment-content markdown-body markdown-compact">
-                                <ReactMarkdown>{c.content}</ReactMarkdown>
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
+                    <div className="comment-input-panel">
                       <div className="comment-input-row">
                         <input
                           className="comment-input"
@@ -815,8 +888,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .community-chat-header {
           display: flex;
-          align-items: center;
-          padding: 16px 20px;
+          flex-direction: column;
+          padding: 8px 20px;
           background: #fff;
           border-bottom: 1px solid #e8e8e8;
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
@@ -851,6 +924,121 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           color: #333;
         }
 
+        .header-top-row {
+          display: flex;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+
+        .header-info-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          overflow: hidden;
+          padding-left: ${embedded ? '0' : '44px'}; /* 嵌入模式下不需要左边距对齐 */
+        }
+
+        .header-stats {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-shrink: 0;
+        }
+
+        .stat-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          color: #8c8c8c;
+          font-size: 13px;
+        }
+
+        .stat-item svg {
+          width: 14px;
+          height: 14px;
+        }
+
+        .header-divider {
+          width: 1px;
+          height: 14px;
+          background: #e8e8e8;
+          flex-shrink: 0;
+        }
+
+        .header-announcement {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: #595959;
+          font-size: 13px;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          flex: 1;
+        }
+
+        .announcement-icon {
+          flex-shrink: 0;
+          color: #8c8c8c;
+          width: 14px;
+          height: 14px;
+        }
+
+        .announcement-text {
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+
+        .external-tag {
+          padding: 1px 4px;
+          background: #e6f7ff;
+          color: #1890ff;
+          border-radius: 2px;
+          font-size: 11px;
+          margin-left: 4px;
+          flex-shrink: 0;
+        }
+
+        .community-tabs {
+          display: flex;
+          padding: 0 20px;
+          background: #fff;
+          border-bottom: 1px solid #e8e8e8;
+          flex-shrink: 0;
+        }
+
+        .community-tab {
+          padding: 12px 16px;
+          font-size: 15px;
+          color: #666;
+          background: none;
+          border: none;
+          cursor: pointer;
+          position: relative;
+          font-weight: 500;
+        }
+
+        .community-tab:hover {
+          color: #1890ff;
+        }
+
+        .community-tab.active {
+          color: #1890ff;
+          font-weight: 600;
+        }
+
+        .community-tab.active::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 16px;
+          right: 16px;
+          height: 3px;
+          background: #1890ff;
+          border-radius: 3px 3px 0 0;
+        }
+
         .community-message-list {
           flex: 1;
           min-height: 0;
@@ -868,59 +1056,61 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         .message-item {
           display: flex;
           align-items: flex-start;
-          margin-bottom: 20px;
+          margin-bottom: 16px;
+          background: #fff;
+          padding: 16px;
+          border-radius: 8px;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          border: 1px solid #f0f0f0;
         }
 
         .message-avatar {
-          width: 44px;
-          height: 44px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
-          background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+          background: #f0f2f5;
           display: flex;
           align-items: center;
           justify-content: center;
           margin-right: 12px;
           flex-shrink: 0;
-          box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
-          color: #fff;
+          color: #8c8c8c;
         }
 
         .message-avatar svg {
-          width: 24px;
-          height: 24px;
+          width: 20px;
+          height: 20px;
         }
 
         .message-content {
           flex: 1;
-          max-width: calc(100% - 68px);
+          min-width: 0;
         }
 
         .message-header {
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 8px;
+          gap: 8px;
+          margin-bottom: 4px;
         }
 
         .message-sender {
           font-size: 14px;
-          color: #333;
-          font-weight: 500;
+          color: #262626;
+          font-weight: 600;
         }
 
         .message-time {
           font-size: 12px;
-          color: #999;
+          color: #bfbfbf;
         }
 
         .message-bubble {
-          background: #fff;
-          padding: 12px 16px;
-          border-radius: 12px;
-          font-size: 15px;
+          font-size: 14px;
           line-height: 1.6;
           word-break: break-word;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          color: #262626;
+          margin-bottom: 8px;
         }
 
         /* ─── Markdown 渲染样式（社群帖子正文 & 评论） ─── */
@@ -1042,20 +1232,20 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          margin-top: 10px;
+          margin-top: 12px;
         }
 
         .like-pill {
           display: inline-flex;
           align-items: center;
-          gap: 8px;
-          padding: 6px 12px;
-          border-radius: 999px;
-          background: #f5f5f5;
-          border: 1px solid rgba(0, 0, 0, 0.06);
-          color: #333;
-          font-size: 13px;
-          line-height: 1;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 16px;
+          background: #fff;
+          border: 1px solid #e8e8e8;
+          color: #595959;
+          font-size: 12px;
+          line-height: 1.2;
           max-width: 100%;
         }
 
@@ -1075,18 +1265,20 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .comment-panel {
           margin-top: 12px;
-          background: #f1f6ff;
-          border: 1px solid rgba(24, 144, 255, 0.18);
-          border-radius: 12px;
-          padding: 12px;
+          background: #f5f5f5;
+          border-radius: 8px;
+          padding: 12px 16px;
           overflow: hidden; /* 防止评论区 Markdown 内容溢出 */
         }
 
         .comment-preview {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          margin-bottom: 10px;
+          gap: 8px;
+        }
+
+        .comment-input-panel {
+          margin-top: 12px;
         }
 
         .comment-more {

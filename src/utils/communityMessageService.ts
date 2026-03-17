@@ -377,6 +377,38 @@ export async function forwardPost(
   return chat.sendMessage(message);
 }
 
+// ─── 群组信息获取 ──────────────────────────────────────────
+
+/**
+ * 获取群组资料（包含成员总数、公告等）
+ */
+export async function getGroupProfile(groupID: string): Promise<any> {
+  const chat = getChat();
+  try {
+    const res = await chat.getGroupProfile({ groupID });
+    return res.data.group;
+  } catch (err) {
+    console.error('[Community] Failed to get group profile:', err);
+    return null;
+  }
+}
+
+/**
+ * 获取群组中的机器人总数
+ * 逻辑：拉取群成员列表，统计 userID 以 @RBT# 开头的成员
+ */
+export async function getGroupRobotCount(groupID: string): Promise<number> {
+  const chat = getChat();
+  try {
+    const res = await chat.getGroupMemberList({ groupID, count: 100, offset: 0 });
+    const memberList = res.data.memberList || [];
+    return memberList.filter((m: any) => m.userID && m.userID.startsWith('@RBT#')).length;
+  } catch (err) {
+    console.error('[Community] Failed to get group robot count:', err);
+    return 0;
+  }
+}
+
 // ─── 收藏（localStorage）────────────────────────────────────
 
 const BOOKMARK_KEY_PREFIX = 'community_bookmarks_';
