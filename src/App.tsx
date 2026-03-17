@@ -18,6 +18,7 @@ import {
   useConversationListState,
   ConversationPreview,
 } from "@tencentcloud/chat-uikit-react";
+import StreamMessage from './components/StreamMessage';
 import type { ConversationPreviewProps } from "@tencentcloud/chat-uikit-react";
 import { IconChat, IconUsergroup, IconBulletpoint, IconSearch } from "@tencentcloud/uikit-base-component-react";
 import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
@@ -612,7 +613,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
             />
           ) : (
             <>
-              <MessageList />
+              <MessageList Message={StreamMessage} />
               <MessageInput />
             </>
           )}
