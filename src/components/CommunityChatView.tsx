@@ -69,6 +69,61 @@ function truncateText(text: string, maxLen = 5): string {
 }
 
 /**
+ * 可展开的内容组件
+ */
+const ExpandableContent: React.FC<{ content: string }> = ({ content }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [shouldShowExpand, setShouldShowExpand] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      // 如果内容高度超过 300px，则显示展开按钮
+      if (contentRef.current.scrollHeight > 300) {
+        setShouldShowExpand(true);
+      } else {
+        setShouldShowExpand(false);
+      }
+    }
+  }, [content]);
+
+  return (
+    <div className={`expandable-content ${isExpanded ? 'expanded' : ''}`}>
+      <div
+        ref={contentRef}
+        className="content-inner"
+        style={{
+          maxHeight: isExpanded ? 'none' : '300px',
+          overflow: 'hidden',
+          position: 'relative',
+          transition: 'max-height 0.3s ease'
+        }}
+      >
+        <MDEditor.Markdown
+          source={content}
+          style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }}
+        />
+        {!isExpanded && shouldShowExpand && <div className="content-overlay" />}
+      </div>
+      {!isExpanded && shouldShowExpand && (
+        <div className="expand-button-wrapper">
+          <button className="expand-button" onClick={() => setIsExpanded(true)}>
+            展开
+          </button>
+        </div>
+      )}
+      {isExpanded && shouldShowExpand && (
+        <div className="expand-button-wrapper">
+          <button className="expand-button" onClick={() => setIsExpanded(false)}>
+            收起
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
  * 话题论坛聊天页面组件
  * 支持留言板功能，用户可以在右下角点击"+"按钮发送留言
  */
@@ -616,9 +671,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     <span className="message-time">{formatTime(msg.time)}</span>
                   </div>
 
-                  {/* 帖子正文：支持 Markdown 格式渲染（如标题、列表、代码块等） */}
+                  {/* 帖子正文：支持 Markdown 格式渲染（如标题、列表、代码块等），支持展开/收起 */}
                   <div className="message-bubble" data-color-mode="light">
-                    <MDEditor.Markdown source={msg.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }} />
+                    <ExpandableContent content={msg.content} />
                   </div>
 
                   {/* 默认显示的评论预览区 */}
@@ -1112,6 +1167,46 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           word-break: break-word;
           color: #262626;
           margin-bottom: 8px;
+        }
+
+        .expandable-content {
+          position: relative;
+        }
+
+        .content-overlay {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 80px;
+          background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 1));
+          pointer-events: none;
+        }
+
+        .expand-button-wrapper {
+          display: flex;
+          justify-content: center;
+          margin-top: -20px;
+          position: relative;
+          z-index: 10;
+        }
+
+        .expand-button {
+          background: #fff;
+          border: 1px solid #d9d9d9;
+          border-radius: 16px;
+          padding: 4px 24px;
+          font-size: 13px;
+          color: #595959;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          transition: all 0.2s;
+        }
+
+        .expand-button:hover {
+          color: #1890ff;
+          border-color: #1890ff;
+          box-shadow: 0 4px 12px rgba(24, 144, 255, 0.15);
         }
 
         /* ─── Markdown 渲染样式（社群帖子正文 & 评论） ─── */
