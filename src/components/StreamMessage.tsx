@@ -1,24 +1,27 @@
 /**
- * StreamMessage - AI 机器人流式消息自定义渲染组件
+ * StreamMessage - AI 机器人消息自定义渲染组件
  *
- * 工作原理：
- * 1. 后端通过腾讯云 IM 的 send_stream_msg 接口，以 TIMCustomElem 格式发送流式消息
- * 2. TIMCustomElem 的 Data 字段结构为：
- *    { chatbotPlugin: 1, chunks: ["片段1", "片段2", ...], isFinished: 0|1 }
- * 3. SDK 通过 MESSAGE_RECEIVED 通知第一个片段，后续通过 MESSAGE_MODIFIED 更新同一条消息
- * 4. 本组件拦截 TIMCustomElem 消息，解析 Data 中的 chunks 拼接为完整文本
- * 5. 未完成时（isFinished=0）显示光标闪烁效果（打字机效果）
- * 6. 非 AI 流式消息仍交给 TUIKit 内置 Message 组件渲染
+ * 核心功能：
+ * 1. 对机器人(@RBT#开头)发送的文本消息，用 react-markdown 渲染 Markdown 格式
+ * 2. 对流式消息(chatbotPlugin:1 + chunks)，实时渲染 Markdown + 打字机光标
+ * 3. 过滤腾讯内置 LLM 消息(chatbotPlugin:2)
+ * 4. 其他普通消息交给 TUIKit 内置 Message 组件
+ *
+ * 渲染链路：
+ *   send_stream_msg -> TIMCustomElem(chatbotPlugin:1, chunks:[...]) -> 流式 Markdown 渲染
+ *   sendmsg -> TIMTextElem(纯文本, 来自@RBT#) -> Markdown 渲染
+ *   普通用户消息 -> TUIKit 内置 Message 组件
  */
 
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Message } from '@tencentcloud/chat-uikit-react';
 import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
 
-// 解析结果类型：区分本地 Agent 流式消息、腾讯内置 LLM 消息、普通消息
+// 解析结果类型
 interface StreamParseResult {
-  isStream: boolean;         // 是否为本地 Agent 的流式消息（chatbotPlugin=1）
-  isBuiltinLLM: boolean;     // 是否为腾讯内置 LLM 的消息（chatbotPlugin=2），需要过滤掉
+  isStream: boolean;         // 是否为本地 Agent 的流式消息(chatbotPlugin=1)
+  isBuiltinLLM: boolean;     // 是否为腾讯内置 LLM 消息(chatbotPlugin=2)
   text: string;
   isFinished: boolean;
 }
@@ -38,15 +41,14 @@ function parseStreamData(message: any): StreamParseResult {
   try {
     const data = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data;
 
-    // 本地 Agent 的流式消息：chatbotPlugin=1
+    // 本地 Agent 的流式消息: chatbotPlugin=1
     if (data?.chatbotPlugin === 1 && Array.isArray(data?.chunks)) {
       const text = data.chunks.join('');
       const isFinished = data.isFinished === 1;
       return { isStream: true, isBuiltinLLM: false, text, isFinished };
     }
 
-    // 腾讯内置 LLM 的消息：chatbotPlugin=2，需要隐藏
-    // 当控制台机器人绑定了内置 LLM 时，会自动产生这类消息，和本地 Agent 的回复重复
+    // 腾讯内置 LLM 消息: chatbotPlugin=2
     if (data?.chatbotPlugin === 2) {
       return { isStream: false, isBuiltinLLM: true, text: '', isFinished: true };
     }
@@ -57,62 +59,87 @@ function parseStreamData(message: any): StreamParseResult {
   return fallback;
 }
 
+// 判断消息是否来自机器人账号(@RBT#开头)
+function isBotMessage(message: any): boolean {
+  const from = message?.from || message?.flow === 'in' && '';
+  if (typeof from === 'string' && from.startsWith('@RBT#')) {
+    return true;
+  }
+  return false;
+}
+
+// 提取普通文本消息的内容
+function getTextContent(message: any): string {
+  // TIMTextElem 类型
+  if (message?.type === TUIChatEngine.TYPES.MSG_TEXT) {
+    const payload = message?.payload;
+    if (payload?.text) return payload.text;
+  }
+  return '';
+}
+
 // 导出辅助函数供 MessageList 的 filter 使用
 export function isStreamMessage(message: any): boolean {
   return parseStreamData(message).isStream;
 }
 
 /**
- * 流式消息过滤器
- *
- * 在 MessageList 的 filter prop 中使用，作用是：
- * - 非流式消息一律保留
- * - 流式消息只保留 isFinished=1 的最终版本（避免中间片段产生多条气泡）
- *
- * 但实际上腾讯云 SDK 的流式消息是通过 MESSAGE_MODIFIED 更新同一条消息，
- * 理论上不会产生多条气泡。这个 filter 作为保险措施，
- * 防止极端情况下（比如网络重连导致重复投递）出现冗余消息。
+ * 流式消息过滤器 - 在 MessageList 的 filter prop 中使用
+ * 过滤掉腾讯内置 LLM 消息(chatbotPlugin=2)
  */
 export function streamMessageFilter(message: any): boolean {
-  const { isStream, isBuiltinLLM } = parseStreamData(message);
-
-  // 过滤掉腾讯内置 LLM 的消息（chatbotPlugin=2）
-  // 当控制台机器人绑定了内置 LLM 时会产生这类消息，和本地 Agent 回复重复
+  const { isBuiltinLLM } = parseStreamData(message);
   if (isBuiltinLLM) return false;
-
-  // 其他消息（包括本地 Agent 流式消息和普通消息）正常展示
   return true;
 }
 
-// 自定义消息组件 props 类型（和 TUIKit 内置 Message 组件 props 一致）
+// 自定义消息组件 props
 interface StreamMessageProps {
   message: any;
   [key: string]: any;
 }
 
 const StreamMessage: React.FC<StreamMessageProps> = (props) => {
-  const { message, ...restProps } = props;
+  const { message } = props;
   const { isStream, isBuiltinLLM, text, isFinished } = parseStreamData(message);
 
-  // 腾讯内置 LLM 消息：不渲染（双重保险，filter 已经过滤了）
+  // 腾讯内置 LLM 消息: 不渲染
   if (isBuiltinLLM) {
     return null;
   }
 
-  // 非 AI 流式消息，使用内置 Message 组件渲染
-  if (!isStream) {
-    return <Message {...props} />;
+  // AI 流式消息: 渲染 Markdown + 打字机光标
+  if (isStream) {
+    return (
+      <div className="bot-message-wrapper">
+        <div className="bot-message-bubble">
+          <div className="bot-markdown-content">
+            <ReactMarkdown>{text}</ReactMarkdown>
+          </div>
+          {!isFinished && <span className="stream-message-cursor">|</span>}
+        </div>
+      </div>
+    );
   }
 
-  // AI 流式消息：渲染为纯文本 + 打字机光标
-  return (
-    <div className="stream-message-wrapper">
-      <div className="stream-message-bubble">
-        <span className="stream-message-text">{text}</span>
-        {!isFinished && <span className="stream-message-cursor">|</span>}
-      </div>
-    </div>
-  );
+  // 机器人的普通文本消息: 用 Markdown 渲染
+  if (isBotMessage(message)) {
+    const textContent = getTextContent(message);
+    if (textContent) {
+      return (
+        <div className="bot-message-wrapper">
+          <div className="bot-message-bubble">
+            <div className="bot-markdown-content">
+              <ReactMarkdown>{textContent}</ReactMarkdown>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // 其他消息: 使用内置 Message 组件渲染
+  return <Message {...props} />;
 };
 
 export default StreamMessage;

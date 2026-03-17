@@ -1054,13 +1054,13 @@ body {
   cursor: not-allowed;
 }
 
-/* ====== AI 流式消息 - 打字机效果 ====== */
-.stream-message-wrapper {
+/* ====== AI 机器人消息 - Markdown 渲染 + 打字机效果 ====== */
+.bot-message-wrapper {
   display: flex;
   padding: 4px 0;
 }
 
-.stream-message-bubble {
+.bot-message-bubble {
   background: #fff;
   border-radius: 0 12px 12px 12px;
   padding: 10px 14px;
@@ -1069,15 +1069,116 @@ body {
   font-size: 14px;
   color: #333;
   word-break: break-word;
-  white-space: pre-wrap;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
-.stream-message-text {
-  display: inline;
+/* Markdown 内容区域样式 */
+.bot-markdown-content {
+  /* 重置 react-markdown 生成的元素间距 */
 }
 
-/* 光标闪烁动画 - 未完成时展示 */
+.bot-markdown-content h1,
+.bot-markdown-content h2,
+.bot-markdown-content h3,
+.bot-markdown-content h4 {
+  margin: 12px 0 6px 0;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.bot-markdown-content h1 {
+  font-size: 1.3em;
+}
+
+.bot-markdown-content h2 {
+  font-size: 1.15em;
+}
+
+.bot-markdown-content h3 {
+  font-size: 1.05em;
+}
+
+.bot-markdown-content p {
+  margin: 6px 0;
+  line-height: 1.7;
+}
+
+.bot-markdown-content ul,
+.bot-markdown-content ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.bot-markdown-content li {
+  margin: 3px 0;
+  line-height: 1.6;
+}
+
+.bot-markdown-content strong {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.bot-markdown-content em {
+  font-style: italic;
+}
+
+.bot-markdown-content code {
+  background: #f4f5f7;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: #e83e8c;
+}
+
+.bot-markdown-content pre {
+  background: #f4f5f7;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.bot-markdown-content pre code {
+  background: none;
+  padding: 0;
+  color: #333;
+}
+
+.bot-markdown-content blockquote {
+  border-left: 3px solid #ddd;
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: #666;
+}
+
+.bot-markdown-content hr {
+  border: none;
+  border-top: 1px solid #e8e8e8;
+  margin: 10px 0;
+}
+
+.bot-markdown-content a {
+  color: #1890ff;
+  text-decoration: none;
+}
+
+.bot-markdown-content a:hover {
+  text-decoration: underline;
+}
+
+/* 第一个子元素去掉顶部间距 */
+.bot-markdown-content > :first-child {
+  margin-top: 0;
+}
+
+/* 最后一个子元素去掉底部间距 */
+.bot-markdown-content > :last-child {
+  margin-bottom: 0;
+}
+
+/* 光标闪烁动画 - 流式消息未完成时展示 */
 .stream-message-cursor {
   display: inline-block;
   width: 2px;
