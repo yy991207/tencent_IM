@@ -304,11 +304,12 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     const groupAvatarUrl = groupProfile?.avatar || groupProfile?.faceUrl;
 
     const sdkLastMessageAbstractRaw = conversation?.lastMessage?.messageForShow || '';
-    // 新建群聊但尚无人发言时，SDK 可能会返回类似“[Custom Messages]”的占位摘要。
-    // 这类摘要没有业务价值，会干扰用户判断“群里是否有聊天记录”，因此统一视为空摘要。
+    // 新建群聊但尚无人发言时，SDK 可能会返回类似"[Custom Messages]"的占位摘要。
+    // 流式消息(TIMCustomElem)的 messageForShow 可能返回 "null" 字面量。
+    // 这类摘要没有业务价值，统一视为空摘要，再尝试从 payload 中提取真实文本。
     const sdkLastMessageAbstract = (() => {
       const t = String(sdkLastMessageAbstractRaw || '').trim();
-      if (!t) return '';
+      if (!t || t === 'null') return '';
       if (/^\[(Custom Message|Custom Messages|自定义消息)\]$/i.test(t)) return '';
       if (/^(Custom Message|Custom Messages|自定义消息)$/i.test(t)) return '';
       return t;
@@ -318,6 +319,28 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
 
     const isGroupConversation = (conversation as any)?.type === TUIChatEngine.TYPES.CONV_GROUP;
     const lastMessage = (conversation as any)?.lastMessage;
+
+    // 当 messageForShow 为空时（流式消息 TIMCustomElem），尝试从 payload 提取文本作为预览
+    const streamFallbackAbstract = (() => {
+      if (sdkLastMessageAbstract) return sdkLastMessageAbstract;
+      if (!lastMessage) return '';
+      try {
+        const payload = lastMessage?.payload;
+        if (!payload?.data) return '';
+        const data = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data;
+        // 流式消息 chatbotPlugin=1，文本在 chunks 数组中
+        if (data?.chatbotPlugin === 1 && Array.isArray(data?.chunks)) {
+          const fullText = data.chunks.join('');
+          // 截取前 30 个字符作为预览
+          return fullText.length > 30 ? fullText.slice(0, 30) + '...' : fullText;
+        }
+        // 内置 LLM 消息不显示
+        if (data?.chatbotPlugin === 2) return '';
+      } catch {
+        // 解析失败就跳过
+      }
+      return '';
+    })();
 
     const getGroupSpeakerPrefix = () => {
       // 群聊摘要统一展示“发言人：内容”，社群/话题入口的摘要由其他逻辑生成，这里只处理标准群聊
@@ -335,8 +358,8 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     const displayAbstract = isCommunity
       ? (communitySummary?.lastMessageAbstract || '')
       : (isGroupConversation
-        ? `${getGroupSpeakerPrefix()}${sdkLastMessageAbstract || ''}`
-        : sdkLastMessageAbstract);
+        ? `${getGroupSpeakerPrefix()}${streamFallbackAbstract || ''}`
+        : streamFallbackAbstract);
     const displayTime = isCommunity
       ? (communitySummary?.lastMessageTime || null)
       : sdkLastMessageTime;
