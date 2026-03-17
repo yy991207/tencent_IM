@@ -3,7 +3,7 @@ import { ConversationList, ConversationPreview, useLoginState } from '@tencentcl
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo } from 'react-icons/fi';
-import ReactMarkdown from 'react-markdown';
+import MDEditor from '@uiw/react-md-editor';
 import {
   type CommunityPost,
   type CommunityLikeUser,
@@ -617,8 +617,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                   </div>
 
                   {/* 帖子正文：支持 Markdown 格式渲染（如标题、列表、代码块等） */}
-                  <div className="message-bubble markdown-body">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <div className="message-bubble" data-color-mode="light">
+                    <MDEditor.Markdown source={msg.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }} />
                   </div>
 
                   {/* 默认显示的评论预览区 */}
@@ -638,8 +638,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                           <div key={c.id} className="comment-item">
                             <span className="comment-sender">{c.sender}：</span>
                             {/* 评论预览：支持 Markdown 渲染 */}
-                            <span className="comment-content markdown-body markdown-compact">
-                              <ReactMarkdown>{c.content}</ReactMarkdown>
+                            <span className="comment-content markdown-compact" data-color-mode="light">
+                              <MDEditor.Markdown source={c.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit', display: 'inline' }} />
                             </span>
                           </div>
                         ))}
@@ -757,8 +757,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                       <div className="comment-detail-post-time">{formatTime(msg.time)}</div>
                     </div>
                     {/* 评论详情中的帖子正文：同样支持 Markdown 渲染 */}
-                    <div className="comment-detail-post-content markdown-body">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <div className="comment-detail-post-content" data-color-mode="light">
+                      <MDEditor.Markdown source={msg.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }} />
                     </div>
                     {hasLikeInfo && (
                       <div className="comment-detail-like-info">{renderLikeInfo(likeUsers)}</div>
@@ -776,8 +776,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                             <span className="comment-detail-item-time">{formatTime(c.time)}</span>
                           </div>
                           {/* 评论详情：支持 Markdown 渲染 */}
-                          <div className="comment-detail-item-content markdown-body">
-                            <ReactMarkdown>{c.content}</ReactMarkdown>
+                          <div className="comment-detail-item-content" data-color-mode="light">
+                            <MDEditor.Markdown source={c.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }} />
                           </div>
                         </div>
                       ))
@@ -826,14 +826,15 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             </div>
 
             {/* 模态框主体 - 文本输入区 */}
-            <div className="modal-body">
-              <textarea
-                className="message-textarea"
-                placeholder="输入留言内容..."
+            <div className="modal-body" data-color-mode="light">
+              <MDEditor
                 value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                autoFocus
-                rows={10}
+                onChange={(val) => setInputValue(val || '')}
+                preview="edit"
+                height={400}
+                textareaProps={{
+                  placeholder: '输入留言内容...'
+                }}
               />
             </div>
 
