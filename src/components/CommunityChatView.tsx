@@ -169,18 +169,83 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   const currentUserId = loginUserInfo?.userId || '';
 
+  // 前端极度压缩图片转 Base64（仅用于 Demo 演示，真实场景请使用后端上传接口）
+  const compressImageToBase64 = (file: File, maxWidth = 300, initialQuality = 0.5): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // 限制最大宽度
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(null);
+            return;
+          }
+          
+          // 绘制白色背景（防止透明 PNG 变黑）
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          let quality = initialQuality;
+          let dataUrl = canvas.toDataURL('image/jpeg', quality);
+          
+          // 循环压缩，目标是让 Base64 字符串长度小于 10000 字节（留出 2KB 给其他文本）
+          // 腾讯云 IM 限制 12000 字节
+          let attempts = 0;
+          while (dataUrl.length > 10000 && attempts < 5) {
+            quality -= 0.1;
+            if (quality <= 0.1) quality = 0.1;
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+            attempts++;
+          }
+
+          if (dataUrl.length > 11000) {
+            console.warn('图片压缩后仍然过大，可能导致发送失败。当前长度:', dataUrl.length);
+          }
+          resolve(dataUrl);
+        };
+        img.onerror = () => resolve(null);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  };
+
   // 处理图片上传逻辑 (md-editor-rt 专用)
   const onUploadImg = async (files: File[], callback: (urls: string[]) => void) => {
-    const res = await Promise.all(
-      files.map((file) => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-      })
-    );
-    callback(res);
+    try {
+      const urls = await Promise.all(
+        files.map(async (file) => {
+          // 使用前端极度压缩逻辑
+          const base64 = await compressImageToBase64(file);
+          return base64 || '';
+        })
+      );
+      
+      const validUrls = urls.filter(url => !!url);
+      if (validUrls.length > 0) {
+        callback(validUrls);
+      } else {
+        alert('图片处理失败，请重试。');
+      }
+    } catch (err) {
+      console.error('图片处理失败:', err);
+      alert('图片处理失败，请检查网络或上传接口配置。');
+    }
   };
 
   // 从帖子数据派生当前用户的点赞集合
