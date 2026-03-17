@@ -3,7 +3,8 @@ import { ConversationList, ConversationPreview, useLoginState } from '@tencentcl
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch } from 'react-icons/fi';
-import MDEditor from '@uiw/react-md-editor';
+import { MdEditor, MdPreview } from 'md-editor-rt';
+import 'md-editor-rt/lib/style.css';
 import {
   type CommunityPost,
   type CommunityLikeUser,
@@ -78,14 +79,20 @@ const ExpandableContent: React.FC<{ content: string }> = ({ content }) => {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (contentRef.current) {
+    const el = contentRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(() => {
       // 如果内容高度超过 300px，则显示展开按钮
-      if (contentRef.current.scrollHeight > 300) {
+      if (el.scrollHeight > 300) {
         setShouldShowExpand(true);
       } else {
         setShouldShowExpand(false);
       }
-    }
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [content]);
 
   return (
@@ -100,9 +107,10 @@ const ExpandableContent: React.FC<{ content: string }> = ({ content }) => {
           transition: 'max-height 0.3s ease'
         }}
       >
-        <MDEditor.Markdown
-          source={content}
-          style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }}
+        <MdPreview
+          modelValue={content}
+          previewTheme="github"
+          style={{ background: 'transparent', padding: 0 }}
         />
         {!isExpanded && shouldShowExpand && <div className="content-overlay" />}
       </div>
@@ -160,6 +168,20 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [memberSearchValue, setMemberSearchValue] = useState('');
 
   const currentUserId = loginUserInfo?.userId || '';
+
+  // 处理图片上传逻辑 (md-editor-rt 专用)
+  const onUploadImg = async (files: File[], callback: (urls: string[]) => void) => {
+    const res = await Promise.all(
+      files.map((file) => {
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+      })
+    );
+    callback(res);
+  };
 
   // 从帖子数据派生当前用户的点赞集合
   const likedMessageIds = useMemo(() => {
@@ -683,7 +705,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                   </div>
 
                   {/* 帖子正文：支持 Markdown 格式渲染（如标题、列表、代码块等），支持展开/收起 */}
-                  <div className="message-bubble" data-color-mode="light">
+                  <div className="message-bubble">
                     <ExpandableContent content={msg.content} />
                   </div>
 
@@ -702,10 +724,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                         )}
                         {previewComments.map((c) => (
                           <div key={c.id} className="comment-item">
-                            <span className="comment-sender">{c.sender}：</span>
+                            <span className="comment-sender">{c.sender}:</span>
                             {/* 评论预览：支持 Markdown 渲染 */}
-                            <span className="comment-content markdown-compact" data-color-mode="light">
-                              <MDEditor.Markdown source={c.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit', display: 'inline' }} />
+                            <span className="comment-content markdown-compact">
+                              <MdPreview
+                                modelValue={c.content}
+                                previewTheme="github"
+                                style={{ background: 'transparent', padding: 0, display: 'inline' }}
+                              />
                             </span>
                           </div>
                         ))}
@@ -823,8 +849,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                       <div className="comment-detail-post-time">{formatTime(msg.time)}</div>
                     </div>
                     {/* 评论详情中的帖子正文：同样支持 Markdown 渲染 */}
-                    <div className="comment-detail-post-content" data-color-mode="light">
-                      <MDEditor.Markdown source={msg.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }} />
+                    <div className="comment-detail-post-content">
+                      <MdPreview
+                        modelValue={msg.content}
+                        previewTheme="github"
+                        style={{ background: 'transparent', padding: 0 }}
+                      />
                     </div>
                     {hasLikeInfo && (
                       <div className="comment-detail-like-info">{renderLikeInfo(likeUsers)}</div>
@@ -842,8 +872,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                             <span className="comment-detail-item-time">{formatTime(c.time)}</span>
                           </div>
                           {/* 评论详情：支持 Markdown 渲染 */}
-                          <div className="comment-detail-item-content" data-color-mode="light">
-                            <MDEditor.Markdown source={c.content} style={{ whiteSpace: 'pre-wrap', background: 'transparent', color: 'inherit' }} />
+                          <div className="comment-detail-item-content">
+                            <MdPreview
+                              modelValue={c.content}
+                              previewTheme="github"
+                              style={{ background: 'transparent', padding: 0 }}
+                            />
                           </div>
                         </div>
                       ))
@@ -892,15 +926,15 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             </div>
 
             {/* 模态框主体 - 文本输入区 */}
-            <div className="modal-body" data-color-mode="light">
-              <MDEditor
-                value={inputValue}
-                onChange={(val) => setInputValue(val || '')}
-                preview="edit"
-                height={400}
-                textareaProps={{
-                  placeholder: '输入留言内容...'
-                }}
+            <div className="modal-body">
+              <MdEditor
+                modelValue={inputValue}
+                onChange={setInputValue}
+                onUploadImg={onUploadImg}
+                placeholder="输入留言内容..."
+                language="zh-CN"
+                toolbarsExclude={['github']}
+                style={{ height: '400px' }}
               />
             </div>
 
@@ -1285,6 +1319,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           box-shadow: 0 4px 12px rgba(24, 144, 255, 0.15);
         }
 
+        /* 覆盖 md-editor-rt 内部代码块的最大高度限制，让外层的 ExpandableContent 来控制高度 */
+        .md-editor-preview pre,
+        .md-editor-preview .md-editor-code {
+          max-height: none !important;
+        }
+
         /* ─── Markdown 渲染样式（社群帖子正文 & 评论） ─── */
         .markdown-body {
           overflow: hidden; /* 限制所有 Markdown 渲染区域不溢出 */
@@ -1468,11 +1508,16 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           font-size: 13px;
           color: #333;
           line-height: 1.4;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: baseline;
+          gap: 4px;
         }
 
         .comment-sender {
           color: #555;
           font-weight: 600;
+          white-space: nowrap;
         }
 
         .comment-content {
@@ -1528,7 +1573,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: stretch;
           justify-content: center;
-          z-index: 500;
+          z-index: 99997;
         }
 
         .comment-detail-panel {
@@ -1695,7 +1740,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 600;
+          z-index: 99998;
         }
 
         .share-modal {
@@ -1850,7 +1895,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 1000;
+          z-index: 99999;
           animation: fadeIn 0.2s ease-out;
         }
 
@@ -2062,7 +2107,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           right: 0;
           bottom: 0;
           background: rgba(0, 0, 0, 0.1);
-          z-index: 1000;
+          z-index: 99996;
           display: flex;
           justify-content: flex-end;
         }
