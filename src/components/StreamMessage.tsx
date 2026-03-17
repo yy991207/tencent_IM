@@ -13,7 +13,7 @@
  *   普通用户消息 -> TUIKit 内置 Message 组件
  */
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '@tencentcloud/chat-uikit-react';
 import TUIChatEngine from '@tencentcloud/chat-uikit-engine-lite';
@@ -103,6 +103,16 @@ const StreamMessage: React.FC<StreamMessageProps> = (props) => {
   const { message } = props;
   const { isStream, isBuiltinLLM, text, isFinished } = parseStreamData(message);
 
+  // Hooks 必须在所有条件分支之前调用（React Hooks 规则）
+  const streamEndRef = useRef<HTMLDivElement>(null);
+
+  // 流式消息更新时自动滚动到可见区域
+  useEffect(() => {
+    if (isStream && !isFinished && streamEndRef.current) {
+      streamEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [isStream, isFinished, text]);
+
   // 腾讯内置 LLM 消息: 不渲染
   if (isBuiltinLLM) {
     return null;
@@ -111,7 +121,7 @@ const StreamMessage: React.FC<StreamMessageProps> = (props) => {
   // AI 流式消息: 渲染 Markdown + 打字机光标
   if (isStream) {
     return (
-      <div className="bot-message-wrapper">
+      <div className="bot-message-wrapper" ref={streamEndRef}>
         <div className="bot-message-bubble">
           <div className="bot-markdown-content">
             <ReactMarkdown>{text}</ReactMarkdown>
