@@ -235,6 +235,14 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
 
   const shouldUseTopicHeader = Boolean(showCommunityView && currentTopicBookmark && currentCommunity);
 
+  const handleBackToCommunityConversation = () => {
+    if (!currentCommunity?.groupID) return;
+    setCurrentTopicBookmark(null);
+    setOpenCommunityCommentDetailMessageId(null);
+    setShowCommunityView(true);
+    setActiveConversation(`GROUP${currentCommunity.groupID}`);
+  };
+
   // 初始化默认会话
   useEffect(() => {
     if (status === LoginStatus.SUCCESS) {
@@ -618,7 +626,9 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 </div>
                 <div className="topic-chat-header-text">
                   <div className="topic-chat-header-preview">{topicHeaderPreviewText}</div>
-                  <div className="topic-chat-header-from">来自：{currentCommunity?.groupName || ''}</div>
+                  <button className="topic-chat-header-from" onClick={handleBackToCommunityConversation} type="button">
+                    来自：{currentCommunity?.groupName || ''}
+                  </button>
                 </div>
               </div>
             ) : undefined}
