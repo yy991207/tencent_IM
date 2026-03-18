@@ -116,14 +116,7 @@ function App() {
 }
 
 function ChatApp({ config }: { config: RuntimeConfig }) {
-  const [activeTab, setActiveTab] = useState<'conversations' | 'contacts'>('conversations');
-  const [isChatSettingShow, setIsChatSettingShow] = useState(false);
-  const [isSearchInChatShow, setIsSearchInChatShow] = useState(false);
-  const [showCommunityView, setShowCommunityView] = useState(false);
-  const [currentCommunity, setCurrentCommunity] = useState<{ groupID: string; groupName: string; groupAvatarUrl?: string } | null>(null);
-  const [openCommunityCommentDetailMessageId, setOpenCommunityCommentDetailMessageId] = useState<string | null>(null);
-  const { loginUserInfo } = useLoginState();
-  const [topicBookmarks, setTopicBookmarks] = useState<Array<{
+  type TopicBookmarkItem = {
     groupID?: string;
     groupName: string;
     groupAvatarUrl?: string;
@@ -131,7 +124,17 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     title: string;
     preview: string;
     time?: Date;
-  }>>([]);
+  };
+
+  const [activeTab, setActiveTab] = useState<'conversations' | 'contacts'>('conversations');
+  const [isChatSettingShow, setIsChatSettingShow] = useState(false);
+  const [isSearchInChatShow, setIsSearchInChatShow] = useState(false);
+  const [showCommunityView, setShowCommunityView] = useState(false);
+  const [currentCommunity, setCurrentCommunity] = useState<{ groupID: string; groupName: string; groupAvatarUrl?: string } | null>(null);
+  const [openCommunityCommentDetailMessageId, setOpenCommunityCommentDetailMessageId] = useState<string | null>(null);
+  const { loginUserInfo } = useLoginState();
+  const [topicBookmarks, setTopicBookmarks] = useState<TopicBookmarkItem[]>([]);
+  const [currentTopicBookmark, setCurrentTopicBookmark] = useState<TopicBookmarkItem | null>(null);
 
   const [communityConversationSummary, setCommunityConversationSummary] = useState<Record<string, {
     lastMessageAbstract: string;
@@ -170,15 +173,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         return;
       }
 
-      const list: Array<{
-        groupID?: string;
-        groupName: string;
-        groupAvatarUrl?: string;
-        messageId: string;
-        title: string;
-        preview: string;
-        time?: Date;
-      }> = [];
+      const list: TopicBookmarkItem[] = [];
 
       for (const conv of convList) {
         const groupProfile = conv?.groupProfile;
@@ -205,7 +200,23 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         }
       }
 
-      setTopicBookmarks(list);
+      setTopicBookmarks((prev) => {
+        const prevMap = new Map<string, TopicBookmarkItem>();
+        prev.forEach((item) => {
+          prevMap.set(`${item.groupID || ''}:${item.messageId}`, item);
+        });
+        return list.map((item) => {
+          const key = `${item.groupID || ''}:${item.messageId}`;
+          const existed = prevMap.get(key);
+          if (!existed) return item;
+          return {
+            ...item,
+            title: existed.title || item.title,
+            preview: existed.preview || item.preview,
+            time: existed.time || item.time,
+          };
+        });
+      });
     } catch {
       // 会话列表拉取失败时，不阻塞主流程
       setTopicBookmarks([]);
@@ -213,6 +224,16 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   };
 
   const { setActiveConversation, activeConversation } = useConversationListState();
+
+  const topicHeaderPreviewText = useMemo(() => {
+    if (!currentTopicBookmark) return '';
+    const title = (currentTopicBookmark.title || '').trim();
+    if (!title) return '话题';
+    const maybeStripSender = title.replace(/^[^：:]{1,24}[：:]\s*/, '');
+    return maybeStripSender || title;
+  }, [currentTopicBookmark]);
+
+  const shouldUseTopicHeader = Boolean(showCommunityView && currentTopicBookmark && currentCommunity);
 
   // 初始化默认会话
   useEffect(() => {
@@ -380,10 +401,12 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
             });
             setShowCommunityView(true);
             setOpenCommunityCommentDetailMessageId(null);
+            setCurrentTopicBookmark(null);
           } else {
             setShowCommunityView(false);
             setCurrentCommunity(null);
             setOpenCommunityCommentDetailMessageId(null);
+            setCurrentTopicBookmark(null);
           }
           setActiveConversation(conversation?.conversationID);
         }}
@@ -440,6 +463,8 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 });
                 setShowCommunityView(true);
                 setOpenCommunityCommentDetailMessageId(t.messageId);
+                setCurrentTopicBookmark(t);
+                setActiveConversation(`GROUP${t.groupID}`);
               }}
               style={{ cursor: 'pointer' }}
             >
@@ -579,6 +604,24 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
           }
         >
           <ChatHeader
+            className={shouldUseTopicHeader ? 'chat-header--topic-bookmark' : undefined}
+            title={shouldUseTopicHeader ? '' : undefined}
+            Avatar={shouldUseTopicHeader ? (() => null) : undefined}
+            ChatHeaderLeft={shouldUseTopicHeader ? (
+              <div className="topic-chat-header-left">
+                <div className="topic-chat-header-avatar" aria-hidden="true">
+                  {currentTopicBookmark?.groupAvatarUrl ? (
+                    <img src={currentTopicBookmark.groupAvatarUrl} alt="" />
+                  ) : (
+                    <div className="topic-chat-header-avatar-fallback"></div>
+                  )}
+                </div>
+                <div className="topic-chat-header-text">
+                  <div className="topic-chat-header-preview">{topicHeaderPreviewText}</div>
+                  <div className="topic-chat-header-from">来自：{currentCommunity?.groupName || ''}</div>
+                </div>
+              </div>
+            ) : undefined}
             ChatHeaderRight={
               <div className="header-actions">
                 <button
@@ -632,6 +675,15 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                   const next = [topic, ...prev];
                   return next;
                 });
+
+                if (topic && currentTopicBookmark?.messageId === topic.messageId) {
+                  setCurrentTopicBookmark(topic);
+                }
+
+                if (!topic && messageId && currentTopicBookmark?.messageId === messageId) {
+                  setCurrentTopicBookmark(null);
+                  setOpenCommunityCommentDetailMessageId(null);
+                }
               }}
             />
           ) : (

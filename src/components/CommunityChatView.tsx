@@ -402,9 +402,16 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   }, [groupID, currentUserId]);
 
   useEffect(() => {
-    if (!openCommentDetailMessageId) return;
+    if (!openCommentDetailMessageId) {
+      setCommentDetailMessageId(null);
+      setActiveCommentMessageId(null);
+      setCommentDraft('');
+      return;
+    }
+
     setCommentDetailMessageId(openCommentDetailMessageId);
     setActiveCommentMessageId(openCommentDetailMessageId);
+    setCommentDraft('');
   }, [openCommentDetailMessageId]);
 
   useEffect(() => {
