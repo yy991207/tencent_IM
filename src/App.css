@@ -374,6 +374,43 @@ body {
   color: var(--uikit-theme-light-text-color-link);
 }
 
+.topic-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  color: var(--uikit-theme-light-text-color-link);
+}
+
+.topic-header-bookmark-active {
+  color: #1677ff;
+}
+
+.topic-header-bookmark-active:hover {
+  color: #0958d9;
+}
+
+.topic-header-bookmark-icon {
+  fill: currentColor;
+  stroke-width: 2.2;
+  transform-origin: center;
+  animation: bookmark-pop 0.24s ease-out;
+}
+
+@keyframes bookmark-pop {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.7;
+  }
+  72% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .chat-header--topic-bookmark .uikit-chat-header__info {
   display: none !important;
 }
@@ -464,6 +501,14 @@ body {
 
 .dark .header-actions {
   color: var(--uikit-theme-dark-text-color-link);
+}
+
+.dark .topic-header-actions {
+  color: var(--uikit-theme-dark-text-color-link);
+}
+
+.dark .topic-header-bookmark-active {
+  color: #69b1ff;
 }
 
 .message-toolbar {

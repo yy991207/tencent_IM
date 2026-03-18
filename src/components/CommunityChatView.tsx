@@ -30,6 +30,11 @@ interface CommunityChatViewProps {
   onBack?: () => void;        // 返回按钮回调
   embedded?: boolean;         // 嵌入模式：不展示顶部返回头，避免影响外层会话布局
   openCommentDetailMessageId?: string | null; // 外部触发打开评论详情
+  topicHeaderAction?: {
+    type: 'share' | 'bookmark';
+    messageId: string;
+    nonce: number;
+  } | null;
   onCommunitySummaryChange?: (summary: {
     groupID?: string;
     lastMessageAbstract: string;
@@ -147,6 +152,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   onBack,
   embedded = false,
   openCommentDetailMessageId,
+  topicHeaderAction,
   onCommunitySummaryChange,
   onTopicBookmarkChange,
 }) => {
@@ -666,6 +672,17 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     if (activeTab === 'all') return posts;
     return posts.filter(post => bookmarkedIds.has(post.id) || post.bookmarked);
   }, [posts, activeTab, bookmarkedIds]);
+
+  useEffect(() => {
+    if (!topicHeaderAction?.messageId) return;
+    if (topicHeaderAction.type === 'share') {
+      handleShare(topicHeaderAction.messageId);
+      return;
+    }
+    if (topicHeaderAction.type === 'bookmark') {
+      handleBookmark(topicHeaderAction.messageId);
+    }
+  }, [topicHeaderAction]);
 
   return (
     <div className="community-chat-view">

@@ -27,6 +27,7 @@ import CommunityChatView from './components/CommunityChatView';
 import CustomConversationCreate from './components/CustomConversationCreate';
 import { loadRuntimeConfig, type RuntimeConfig, type UserEntry } from './utils/runtimeConfig';
 import React from 'react';
+import { FiShare2, FiBookmark } from 'react-icons/fi';
 import { emojiBaseUrl, emojiUrlMap } from './utils/tuiEmoji';
 import { loadTopicBookmarkIdsFromConversation } from './utils/communityMessageService';
 import './App.css';
@@ -135,6 +136,11 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   const { loginUserInfo } = useLoginState();
   const [topicBookmarks, setTopicBookmarks] = useState<TopicBookmarkItem[]>([]);
   const [currentTopicBookmark, setCurrentTopicBookmark] = useState<TopicBookmarkItem | null>(null);
+  const [topicHeaderAction, setTopicHeaderAction] = useState<{
+    type: 'share' | 'bookmark';
+    messageId: string;
+    nonce: number;
+  } | null>(null);
 
   const [communityConversationSummary, setCommunityConversationSummary] = useState<Record<string, {
     lastMessageAbstract: string;
@@ -241,6 +247,26 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     setOpenCommunityCommentDetailMessageId(null);
     setShowCommunityView(true);
     setActiveConversation(`GROUP${currentCommunity.groupID}`);
+  };
+
+  const handleTopicHeaderShare = () => {
+    const messageId = currentTopicBookmark?.messageId;
+    if (!messageId) return;
+    setTopicHeaderAction({
+      type: 'share',
+      messageId,
+      nonce: Date.now(),
+    });
+  };
+
+  const handleTopicHeaderUnbookmark = () => {
+    const messageId = currentTopicBookmark?.messageId;
+    if (!messageId) return;
+    setTopicHeaderAction({
+      type: 'bookmark',
+      messageId,
+      nonce: Date.now(),
+    });
   };
 
   // 初始化默认会话
@@ -632,7 +658,21 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 </div>
               </div>
             ) : undefined}
-            ChatHeaderRight={
+            ChatHeaderRight={shouldUseTopicHeader ? (
+              <div className="topic-header-actions">
+                <button className="icon-button" onClick={handleTopicHeaderShare} title="转发" type="button">
+                  <FiShare2 size={18} />
+                </button>
+                <button
+                  className="icon-button topic-header-bookmark-active"
+                  onClick={handleTopicHeaderUnbookmark}
+                  title="取消收藏"
+                  type="button"
+                >
+                  <FiBookmark className="topic-header-bookmark-icon" size={18} />
+                </button>
+              </div>
+            ) : (
               <div className="header-actions">
                 <button
                   className="icon-button"
@@ -647,7 +687,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                   <IconBulletpoint size="20px" />
                 </button>
               </div>
-            }
+            )}
           />
 
           {showCommunityView && currentCommunity ? (
@@ -659,6 +699,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
               hideCommunityHeader={Boolean(currentTopicBookmark)}
               hideCommunityTabs={Boolean(currentTopicBookmark)}
               openCommentDetailMessageId={openCommunityCommentDetailMessageId}
+              topicHeaderAction={topicHeaderAction}
               onCommunitySummaryChange={(summary) => {
                 if (!summary.groupID) return;
                 setCommunityConversationSummary((prev) => ({
