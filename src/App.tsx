@@ -646,6 +646,8 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
               groupID={currentCommunity.groupID}
               groupName={currentCommunity.groupName}
               groupAvatarUrl={currentCommunity.groupAvatarUrl}
+              hideCommunityHeader={Boolean(currentTopicBookmark)}
+              hideCommunityTabs={Boolean(currentTopicBookmark)}
               openCommentDetailMessageId={openCommunityCommentDetailMessageId}
               onCommunitySummaryChange={(summary) => {
                 if (!summary.groupID) return;

@@ -25,6 +25,8 @@ interface CommunityChatViewProps {
   groupID?: string;           // 社群 ID
   groupName?: string;         // 社群名称
   groupAvatarUrl?: string;    // 社群头像 URL（用于话题收藏入口展示）
+  hideCommunityHeader?: boolean; // 收藏话题模式下隐藏社群信息头
+  hideCommunityTabs?: boolean; // 收藏话题模式下隐藏“全部/我订阅的”
   onBack?: () => void;        // 返回按钮回调
   embedded?: boolean;         // 嵌入模式：不展示顶部返回头，避免影响外层会话布局
   openCommentDetailMessageId?: string | null; // 外部触发打开评论详情
@@ -140,6 +142,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   groupID,
   groupName = '话题论坛',
   groupAvatarUrl,
+  hideCommunityHeader = false,
+  hideCommunityTabs = false,
   onBack,
   embedded = false,
   openCommentDetailMessageId,
@@ -670,56 +674,59 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   return (
     <div className="community-chat-view">
       {/* 头部 */}
-      {/* 头部 */}
-      <div className="community-chat-header">
-        {!embedded && (
-          <div className="header-top-row">
-            <button className="back-button" onClick={onBack}>
-              <FiArrowLeft />
-            </button>
-          </div>
-        )}
-        <div className="header-info-row">
-          <div className="header-stats">
-            <div
-              className="stat-item clickable"
-              title="查看成员列表"
-              onClick={() => setShowMemberList(true)}
-            >
-              <FiUsers />
-              <span>{groupProfile?.memberCount || 0}</span>
+      {!hideCommunityHeader && (
+        <div className="community-chat-header">
+          {!embedded && (
+            <div className="header-top-row">
+              <button className="back-button" onClick={onBack}>
+                <FiArrowLeft />
+              </button>
             </div>
-            <div className="stat-item" title="机器人">
-              <FiCpu />
-              <span>{robotCount}</span>
+          )}
+          <div className="header-info-row">
+            <div className="header-stats">
+              <div
+                className="stat-item clickable"
+                title="查看成员列表"
+                onClick={() => setShowMemberList(true)}
+              >
+                <FiUsers />
+                <span>{groupProfile?.memberCount || 0}</span>
+              </div>
+              <div className="stat-item" title="机器人">
+                <FiCpu />
+                <span>{robotCount}</span>
+              </div>
             </div>
-          </div>
-          <div className="header-divider"></div>
-          <div className="header-announcement" title="群公告">
-            <FiInfo className="announcement-icon" />
-            <span className="announcement-text">
-              {groupProfile?.notification || groupProfile?.introduction || '暂无群描述'}
-            </span>
-            <span className="external-tag">外部</span>
+            <div className="header-divider"></div>
+            <div className="header-announcement" title="群公告">
+              <FiInfo className="announcement-icon" />
+              <span className="announcement-text">
+                {groupProfile?.notification || groupProfile?.introduction || '暂无群描述'}
+              </span>
+              <span className="external-tag">外部</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 标签页切换 */}
-      <div className="community-tabs">
-        <button
-          className={`community-tab ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
-        >
-          全部
-        </button>
-        <button
-          className={`community-tab ${activeTab === 'subscribed' ? 'active' : ''}`}
-          onClick={() => setActiveTab('subscribed')}
-        >
-          我订阅的
-        </button>
-      </div>
+      {!hideCommunityTabs && (
+        <div className="community-tabs">
+          <button
+            className={`community-tab ${activeTab === 'all' ? 'active' : ''}`}
+            onClick={() => setActiveTab('all')}
+          >
+            全部
+          </button>
+          <button
+            className={`community-tab ${activeTab === 'subscribed' ? 'active' : ''}`}
+            onClick={() => setActiveTab('subscribed')}
+          >
+            我订阅的
+          </button>
+        </div>
+      )}
 
       {isShareModalOpen && (
         <div className="share-modal-overlay">
