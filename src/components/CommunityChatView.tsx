@@ -550,10 +550,6 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setCommentDraft('');
   };
 
-  const handleCloseCommentDetail = () => {
-    setCommentDetailMessageId(null);
-  };
-
   // 处理转发
   const handleShare = (messageId: string) => {
     setShareMessageId(messageId);
@@ -905,13 +901,6 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       {commentDetailMessageId && (
         <div className="comment-detail-overlay">
           <div className="comment-detail-panel">
-            <div className="comment-detail-header">
-              <div className="comment-detail-title"></div>
-              <button className="comment-detail-close" onClick={handleCloseCommentDetail} type="button">
-                <FiX />
-              </button>
-            </div>
-
             {(() => {
               const msg = posts.find((m) => m.id === commentDetailMessageId);
               if (!msg) return null;
@@ -1661,32 +1650,6 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           background: #fff;
           display: flex;
           flex-direction: column;
-        }
-
-        .comment-detail-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 12px 16px;
-          border-bottom: 1px solid #f0f0f0;
-          flex-shrink: 0;
-        }
-
-        .comment-detail-title {
-          font-size: 16px;
-          font-weight: 600;
-          color: #333;
-        }
-
-        .comment-detail-close {
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: #666;
-          padding: 4px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
         }
 
         .comment-detail-body {
