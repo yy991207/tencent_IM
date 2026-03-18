@@ -240,6 +240,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   }, [currentTopicBookmark]);
 
   const shouldUseTopicHeader = Boolean(showCommunityView && currentTopicBookmark && currentCommunity);
+  const showCommunityFeatureRail = Boolean(showCommunityView && currentCommunity && !currentTopicBookmark);
 
   const handleBackToCommunityConversation = () => {
     if (!currentCommunity?.groupID) return;
@@ -637,108 +638,208 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
             </div>
           }
         >
-          <ChatHeader
-            className={shouldUseTopicHeader ? 'chat-header--topic-bookmark' : undefined}
-            title={shouldUseTopicHeader ? '' : undefined}
-            Avatar={shouldUseTopicHeader ? (() => null) : undefined}
-            ChatHeaderLeft={shouldUseTopicHeader ? (
-              <div className="topic-chat-header-left">
-                <div className="topic-chat-header-avatar" aria-hidden="true">
-                  {currentTopicBookmark?.groupAvatarUrl ? (
-                    <img src={currentTopicBookmark.groupAvatarUrl} alt="" />
-                  ) : (
-                    <div className="topic-chat-header-avatar-fallback"></div>
-                  )}
+          {!showCommunityFeatureRail && (
+            <ChatHeader
+              className={shouldUseTopicHeader ? 'chat-header--topic-bookmark' : undefined}
+              title={shouldUseTopicHeader ? '' : undefined}
+              Avatar={shouldUseTopicHeader ? (() => null) : undefined}
+              ChatHeaderLeft={shouldUseTopicHeader ? (
+                <div className="topic-chat-header-left">
+                  <div className="topic-chat-header-avatar" aria-hidden="true">
+                    {currentTopicBookmark?.groupAvatarUrl ? (
+                      <img src={currentTopicBookmark.groupAvatarUrl} alt="" />
+                    ) : (
+                      <div className="topic-chat-header-avatar-fallback"></div>
+                    )}
+                  </div>
+                  <div className="topic-chat-header-text">
+                    <div className="topic-chat-header-preview">{topicHeaderPreviewText}</div>
+                    <button className="topic-chat-header-from" onClick={handleBackToCommunityConversation} type="button">
+                      来自：{currentCommunity?.groupName || ''}
+                    </button>
+                  </div>
                 </div>
-                <div className="topic-chat-header-text">
-                  <div className="topic-chat-header-preview">{topicHeaderPreviewText}</div>
-                  <button className="topic-chat-header-from" onClick={handleBackToCommunityConversation} type="button">
-                    来自：{currentCommunity?.groupName || ''}
+              ) : undefined}
+              ChatHeaderRight={shouldUseTopicHeader ? (
+                <div className="topic-header-actions">
+                  <button className="icon-button" onClick={handleTopicHeaderShare} title="转发" type="button">
+                    <FiShare2 size={18} />
+                  </button>
+                  <button
+                    className="icon-button topic-header-bookmark-active"
+                    onClick={handleTopicHeaderUnbookmark}
+                    title="取消收藏"
+                    type="button"
+                  >
+                    <FiBookmark className="topic-header-bookmark-icon" size={18} />
                   </button>
                 </div>
-              </div>
-            ) : undefined}
-            ChatHeaderRight={shouldUseTopicHeader ? (
-              <div className="topic-header-actions">
-                <button className="icon-button" onClick={handleTopicHeaderShare} title="转发" type="button">
-                  <FiShare2 size={18} />
-                </button>
-                <button
-                  className="icon-button topic-header-bookmark-active"
-                  onClick={handleTopicHeaderUnbookmark}
-                  title="取消收藏"
-                  type="button"
-                >
-                  <FiBookmark className="topic-header-bookmark-icon" size={18} />
-                </button>
-              </div>
-            ) : (
-              <div className="header-actions">
-                <button
-                  className="icon-button"
-                  onClick={() => setIsSearchInChatShow(!isSearchInChatShow)}
-                >
-                  <IconSearch size="20px" />
-                </button>
-                <button
-                  className="icon-button"
-                  onClick={() => setIsChatSettingShow(!isChatSettingShow)}
-                >
-                  <IconBulletpoint size="20px" />
-                </button>
-              </div>
-            )}
-          />
+              ) : (
+                <div className="header-actions">
+                  <button
+                    className="icon-button"
+                    onClick={() => setIsSearchInChatShow(!isSearchInChatShow)}
+                  >
+                    <IconSearch size="20px" />
+                  </button>
+                  <button
+                    className="icon-button"
+                    onClick={() => setIsChatSettingShow(!isChatSettingShow)}
+                  >
+                    <IconBulletpoint size="20px" />
+                  </button>
+                </div>
+              )}
+            />
+          )}
 
           {showCommunityView && currentCommunity ? (
-            <CommunityChatView
-              embedded={true}
-              groupID={currentCommunity.groupID}
-              groupName={currentCommunity.groupName}
-              groupAvatarUrl={currentCommunity.groupAvatarUrl}
-              hideCommunityHeader={Boolean(currentTopicBookmark)}
-              hideCommunityTabs={Boolean(currentTopicBookmark)}
-              openCommentDetailMessageId={openCommunityCommentDetailMessageId}
-              topicHeaderAction={topicHeaderAction}
-              onCommunitySummaryChange={(summary) => {
-                if (!summary.groupID) return;
-                setCommunityConversationSummary((prev) => ({
-                  ...prev,
-                  [summary.groupID as string]: {
-                    lastMessageAbstract: summary.lastMessageAbstract,
-                    lastMessageTime: summary.lastMessageTime,
-                  },
-                }));
-              }}
-              onTopicBookmarkChange={(topic, messageId) => {
-                setOpenCommunityCommentDetailMessageId(null);
-                setTopicBookmarks((prev) => {
-                  if (!topic) {
-                    if (!messageId) return prev;
-                    const next = prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+            showCommunityFeatureRail ? (
+              <div className="community-view-layout">
+                <div className="community-view-main">
+                  <ChatHeader
+                    className={shouldUseTopicHeader ? 'chat-header--topic-bookmark' : undefined}
+                    title={shouldUseTopicHeader ? '' : undefined}
+                    Avatar={shouldUseTopicHeader ? (() => null) : undefined}
+                    ChatHeaderLeft={shouldUseTopicHeader ? (
+                      <div className="topic-chat-header-left">
+                        <div className="topic-chat-header-avatar" aria-hidden="true">
+                          {currentTopicBookmark?.groupAvatarUrl ? (
+                            <img src={currentTopicBookmark.groupAvatarUrl} alt="" />
+                          ) : (
+                            <div className="topic-chat-header-avatar-fallback"></div>
+                          )}
+                        </div>
+                        <div className="topic-chat-header-text">
+                          <div className="topic-chat-header-preview">{topicHeaderPreviewText}</div>
+                          <button className="topic-chat-header-from" onClick={handleBackToCommunityConversation} type="button">
+                            来自：{currentCommunity?.groupName || ''}
+                          </button>
+                        </div>
+                      </div>
+                    ) : undefined}
+                    ChatHeaderRight={undefined}
+                  />
+                  <CommunityChatView
+                    embedded={true}
+                    groupID={currentCommunity.groupID}
+                    groupName={currentCommunity.groupName}
+                    groupAvatarUrl={currentCommunity.groupAvatarUrl}
+                    hideCommunityHeader={Boolean(currentTopicBookmark)}
+                    hideCommunityTabs={Boolean(currentTopicBookmark)}
+                    openCommentDetailMessageId={openCommunityCommentDetailMessageId}
+                    topicHeaderAction={topicHeaderAction}
+                    onCommunitySummaryChange={(summary) => {
+                      if (!summary.groupID) return;
+                      setCommunityConversationSummary((prev) => ({
+                        ...prev,
+                        [summary.groupID as string]: {
+                          lastMessageAbstract: summary.lastMessageAbstract,
+                          lastMessageTime: summary.lastMessageTime,
+                        },
+                      }));
+                    }}
+                    onTopicBookmarkChange={(topic, messageId) => {
+                      setOpenCommunityCommentDetailMessageId(null);
+                      setTopicBookmarks((prev) => {
+                        if (!topic) {
+                          if (!messageId) return prev;
+                          const next = prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+                          return next;
+                        }
+
+                        const key = `${topic.groupID || ''}:${topic.messageId}`;
+                        const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
+                        if (exists) {
+                          const next = prev.map((t) => (`${t.groupID || ''}:${t.messageId}` === key ? topic : t));
+                          return next;
+                        }
+                        const next = [topic, ...prev];
+                        return next;
+                      });
+
+                      if (topic && currentTopicBookmark?.messageId === topic.messageId) {
+                        setCurrentTopicBookmark(topic);
+                      }
+
+                      if (!topic && messageId && currentTopicBookmark?.messageId === messageId) {
+                        setCurrentTopicBookmark(null);
+                        setOpenCommunityCommentDetailMessageId(null);
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="community-feature-rail">
+                  <div className="community-feature-rail-inner">
+                    <button
+                      className="icon-button community-feature-btn"
+                      onClick={() => setIsSearchInChatShow(!isSearchInChatShow)}
+                      title="搜索"
+                      type="button"
+                    >
+                      <IconSearch size="20px" />
+                    </button>
+                    <button
+                      className="icon-button community-feature-btn"
+                      onClick={() => setIsChatSettingShow(!isChatSettingShow)}
+                      title="设置"
+                      type="button"
+                    >
+                      <IconBulletpoint size="20px" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <CommunityChatView
+                embedded={true}
+                groupID={currentCommunity.groupID}
+                groupName={currentCommunity.groupName}
+                groupAvatarUrl={currentCommunity.groupAvatarUrl}
+                hideCommunityHeader={Boolean(currentTopicBookmark)}
+                hideCommunityTabs={Boolean(currentTopicBookmark)}
+                openCommentDetailMessageId={openCommunityCommentDetailMessageId}
+                topicHeaderAction={topicHeaderAction}
+                onCommunitySummaryChange={(summary) => {
+                  if (!summary.groupID) return;
+                  setCommunityConversationSummary((prev) => ({
+                    ...prev,
+                    [summary.groupID as string]: {
+                      lastMessageAbstract: summary.lastMessageAbstract,
+                      lastMessageTime: summary.lastMessageTime,
+                    },
+                  }));
+                }}
+                onTopicBookmarkChange={(topic, messageId) => {
+                  setTopicBookmarks((prev) => {
+                    if (!topic) {
+                      if (!messageId) return prev;
+                      const next = prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+                      return next;
+                    }
+
+                    const key = `${topic.groupID || ''}:${topic.messageId}`;
+                    const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
+                    if (exists) {
+                      const next = prev.map((t) => (`${t.groupID || ''}:${t.messageId}` === key ? topic : t));
+                      return next;
+                    }
+                    const next = [topic, ...prev];
                     return next;
+                  });
+
+                  if (topic && currentTopicBookmark?.messageId === topic.messageId) {
+                    setCurrentTopicBookmark(topic);
                   }
 
-                  const key = `${topic.groupID || ''}:${topic.messageId}`;
-                  const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
-                  if (exists) {
-                    const next = prev.map((t) => (`${t.groupID || ''}:${t.messageId}` === key ? topic : t));
-                    return next;
+                  if (!topic && messageId && currentTopicBookmark?.messageId === messageId) {
+                    setCurrentTopicBookmark(null);
+                    setOpenCommunityCommentDetailMessageId(null);
                   }
-                  const next = [topic, ...prev];
-                  return next;
-                });
-
-                if (topic && currentTopicBookmark?.messageId === topic.messageId) {
-                  setCurrentTopicBookmark(topic);
-                }
-
-                if (!topic && messageId && currentTopicBookmark?.messageId === messageId) {
-                  setCurrentTopicBookmark(null);
-                  setOpenCommunityCommentDetailMessageId(null);
-                }
-              }}
-            />
+                }}
+              />
+            )
           ) : (
             <>
               <MessageList Message={StreamMessage} />
