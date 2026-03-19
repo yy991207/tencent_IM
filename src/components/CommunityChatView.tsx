@@ -283,10 +283,6 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [posts]);
-
-  useEffect(() => {
     onCommunitySummaryChangeRef.current = onCommunitySummaryChange;
   }, [onCommunitySummaryChange]);
 
@@ -388,6 +384,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       (newPost) => {
         setPosts((prev) => {
           if (prev.some((p) => p.id === newPost.id)) return prev;
+          setTimeout(scrollToBottom, 50);
           return [...prev, newPost];
         });
       },
@@ -397,6 +394,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           prev.map((p) => {
             if (p.id !== newComment.postMessageID) return p;
             if (p.comments.some((c) => c.id === newComment.id)) return p;
+            setTimeout(scrollToBottom, 50);
             return { ...p, comments: [...p.comments, newComment] };
           }),
         );
@@ -482,6 +480,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           _rawMessage: sent,
         };
         setPosts((prev) => [...prev, newPost]);
+        setTimeout(scrollToBottom, 100);
       }
 
       setInputValue('');
@@ -562,6 +561,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             };
           }),
         );
+        setTimeout(scrollToBottom, 100);
       }
       setCommentDraft('');
     } catch (err) {
