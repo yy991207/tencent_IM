@@ -470,6 +470,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   useEffect(() => {
     if (!showMessageInput || !vditorRef.current) return;
 
+    let imgObserver: MutationObserver | null = null;
+
     const vd = new Vditor(vditorRef.current, {
       height: 400,
       placeholder: '输入留言内容...',
@@ -604,11 +606,24 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
               }
             }
           }, true); // 使用捕获阶段
+
+          // 将图片节点设为不可编辑，从根本上阻止光标进入显示 base64 源码
+          const lockImageNodes = () => {
+            editorElement.querySelectorAll('.vditor-ir__node[data-type="img"]').forEach((node) => {
+              if ((node as HTMLElement).contentEditable !== 'false') {
+                (node as HTMLElement).contentEditable = 'false';
+              }
+            });
+          };
+          lockImageNodes();
+          imgObserver = new MutationObserver(lockImageNodes);
+          imgObserver.observe(editorElement, { childList: true, subtree: true });
         }
       },
     });
 
     return () => {
+      imgObserver?.disconnect();
       vd.destroy();
       setVditor(undefined);
     };
@@ -2448,6 +2463,13 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .vditor-ir {
           min-height: 100% !important;
+        }
+
+        /* 隐藏图片节点的 markdown 源码标记，防止 base64 泄露到编辑器 */
+        .vditor-ir__node[data-type="img"] .vditor-ir__marker,
+        .vditor-ir__node[data-type="img"] .vditor-ir__marker--pre,
+        .vditor-ir__node[data-type="img"] .vditor-ir__marker--post {
+          display: none !important;
         }
 
         .modal-footer-modern {
