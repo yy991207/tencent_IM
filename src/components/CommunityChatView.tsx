@@ -1836,6 +1836,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           max-height: none !important;
         }
 
+        /* 压低代码块头部（复制代码按钮）的层级，避免遮盖其他 UI 组件 */
+        .md-editor-preview .md-editor-code-head {
+          z-index: 1 !important;
+          position: relative;
+        }
+
         /* ─── Markdown 渲染样式（社群帖子正文 & 评论） ─── */
         .markdown-body {
           overflow: hidden; /* 限制所有 Markdown 渲染区域不溢出 */
