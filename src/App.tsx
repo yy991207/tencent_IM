@@ -142,6 +142,8 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     nonce: number;
   } | null>(null);
   const handledTopicHeaderActionNonceRef = useRef<number | null>(null);
+  const [forcedUnbookmarkKeys, setForcedUnbookmarkKeys] = useState<Record<string, number>>({});
+  const FORCED_UNBOOKMARK_TTL_MS = 30000;
 
   const [communityConversationSummary, setCommunityConversationSummary] = useState<Record<string, {
     lastMessageAbstract: string;
@@ -183,6 +185,21 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       ...extra,
     });
   };
+
+  const forcedUnbookmarkMessageIds = useMemo(() => {
+    if (!currentCommunity?.groupID) return [] as string[];
+    const nowTs = Date.now();
+    const prefix = `${currentCommunity.groupID}:`;
+    const ids: string[] = [];
+
+    for (const [key, ts] of Object.entries(forcedUnbookmarkKeys)) {
+      if (!key.startsWith(prefix)) continue;
+      if (nowTs - ts > FORCED_UNBOOKMARK_TTL_MS) continue;
+      ids.push(key.slice(prefix.length));
+    }
+
+    return ids;
+  }, [currentCommunity?.groupID, forcedUnbookmarkKeys]);
 
   const refreshTopicBookmarksFromSDK = async () => {
     // 说明：话题入口的“收藏关系”存储在对应社群会话的 customData 中（每个会话 256 bytes）。
@@ -240,11 +257,8 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         }
       }
 
-      for (const key of Array.from(pendingUnbookmarkKeysRef.current.keys())) {
-        if (!sdkRawKeys.has(key)) {
-          pendingUnbookmarkKeysRef.current.delete(key);
-        }
-      }
+      // 注意：不要在这里因为 SDK 读取不到就立刻清除 pending，
+      // 否则会放行后续“同步回调”把刚取消的收藏重新加回列表。
 
       // 收集 SDK 中仍然存在的社群 groupID（用于判断社群是否已解散）
       const existingGroupIds = new Set<string>();
@@ -820,6 +834,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                     openCommentDetailMessageId={openCommunityCommentDetailMessageId}
                     topicHeaderAction={topicHeaderAction}
                     onTopicHeaderActionHandled={handleTopicHeaderActionHandled}
+                    forcedUnbookmarkMessageIds={forcedUnbookmarkMessageIds}
                     onCommunitySummaryChange={(summary) => {
                       if (!summary.groupID) return;
                       setCommunityConversationSummary((prev) => ({
@@ -830,10 +845,11 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                         },
                       }));
                     }}
-                    onTopicBookmarkChange={(topic, messageId) => {
+                    onTopicBookmarkChange={(topic, messageId, source) => {
                       console.log('[TopicBookmarks] onTopicBookmarkChange(layout-with-rail)', {
                         topicKey: topic ? buildTopicBookmarkKey(topic.groupID, topic.messageId) : null,
                         messageId,
+                        source,
                         currentCommunity: currentCommunity?.groupID || null,
                         pendingUnbookmarkKeys: Array.from(pendingUnbookmarkKeysRef.current.keys()),
                       });
@@ -841,15 +857,33 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                       setTopicBookmarks((prev) => {
                         if (!topic) {
                           if (!messageId) return prev;
-                          pendingUnbookmarkKeysRef.current.set(buildTopicBookmarkKey(currentCommunity.groupID, messageId), Date.now());
+                          const removedKey = buildTopicBookmarkKey(currentCommunity.groupID, messageId);
+                          pendingUnbookmarkKeysRef.current.set(removedKey, Date.now());
+                          setForcedUnbookmarkKeys((prevForced) => ({
+                            ...prevForced,
+                            [removedKey]: Date.now(),
+                          }));
                           const next = prev.filter((t) => buildTopicBookmarkKey(t.groupID, t.messageId) !== buildTopicBookmarkKey(currentCommunity.groupID, messageId));
                           return next;
                         }
 
                         const key = buildTopicBookmarkKey(topic.groupID, topic.messageId);
-                        if (pendingUnbookmarkKeysRef.current.has(key)) {
-                          // 刚取消收藏后，忽略短时间内的回刷更新，避免条目“复活”。
+                        const forcedTs = forcedUnbookmarkKeys[key];
+                        if (source === 'sync' && typeof forcedTs === 'number' && Date.now() - forcedTs <= FORCED_UNBOOKMARK_TTL_MS) {
                           return prev;
+                        }
+                        if (pendingUnbookmarkKeysRef.current.has(key) && source === 'sync') {
+                          // 刚取消收藏后，忽略同步回调的回刷更新，避免条目“复活”。
+                          return prev;
+                        }
+                        pendingUnbookmarkKeysRef.current.delete(key);
+                        if (source === 'toggle') {
+                          setForcedUnbookmarkKeys((prevForced) => {
+                            if (!(key in prevForced)) return prevForced;
+                            const nextForced = { ...prevForced };
+                            delete nextForced[key];
+                            return nextForced;
+                          });
                         }
                         const exists = prev.some((t) => buildTopicBookmarkKey(t.groupID, t.messageId) === key);
                         if (exists) {
@@ -904,6 +938,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 openCommentDetailMessageId={openCommunityCommentDetailMessageId}
                 topicHeaderAction={topicHeaderAction}
                 onTopicHeaderActionHandled={handleTopicHeaderActionHandled}
+                forcedUnbookmarkMessageIds={forcedUnbookmarkMessageIds}
                 onCommunitySummaryChange={(summary) => {
                   if (!summary.groupID) return;
                   setCommunityConversationSummary((prev) => ({
@@ -914,25 +949,44 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                     },
                   }));
                 }}
-                onTopicBookmarkChange={(topic, messageId) => {
+                onTopicBookmarkChange={(topic, messageId, source) => {
                   console.log('[TopicBookmarks] onTopicBookmarkChange(layout-plain)', {
                     topicKey: topic ? buildTopicBookmarkKey(topic.groupID, topic.messageId) : null,
                     messageId,
+                    source,
                     currentCommunity: currentCommunity?.groupID || null,
                     pendingUnbookmarkKeys: Array.from(pendingUnbookmarkKeysRef.current.keys()),
                   });
                   setTopicBookmarks((prev) => {
                     if (!topic) {
                       if (!messageId) return prev;
-                      pendingUnbookmarkKeysRef.current.set(buildTopicBookmarkKey(currentCommunity.groupID, messageId), Date.now());
+                      const removedKey = buildTopicBookmarkKey(currentCommunity.groupID, messageId);
+                      pendingUnbookmarkKeysRef.current.set(removedKey, Date.now());
+                      setForcedUnbookmarkKeys((prevForced) => ({
+                        ...prevForced,
+                        [removedKey]: Date.now(),
+                      }));
                       const next = prev.filter((t) => buildTopicBookmarkKey(t.groupID, t.messageId) !== buildTopicBookmarkKey(currentCommunity.groupID, messageId));
                       return next;
                     }
 
                     const key = buildTopicBookmarkKey(topic.groupID, topic.messageId);
-                    if (pendingUnbookmarkKeysRef.current.has(key)) {
-                      // 刚取消收藏后，忽略短时间内的回刷更新，避免条目“复活”。
+                    const forcedTs = forcedUnbookmarkKeys[key];
+                    if (source === 'sync' && typeof forcedTs === 'number' && Date.now() - forcedTs <= FORCED_UNBOOKMARK_TTL_MS) {
                       return prev;
+                    }
+                    if (pendingUnbookmarkKeysRef.current.has(key) && source === 'sync') {
+                      // 刚取消收藏后，忽略同步回调的回刷更新，避免条目“复活”。
+                      return prev;
+                    }
+                    pendingUnbookmarkKeysRef.current.delete(key);
+                    if (source === 'toggle') {
+                      setForcedUnbookmarkKeys((prevForced) => {
+                        if (!(key in prevForced)) return prevForced;
+                        const nextForced = { ...prevForced };
+                        delete nextForced[key];
+                        return nextForced;
+                      });
                     }
                     const exists = prev.some((t) => buildTopicBookmarkKey(t.groupID, t.messageId) === key);
                     if (exists) {

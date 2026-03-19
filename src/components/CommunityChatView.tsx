@@ -36,6 +36,7 @@ interface CommunityChatViewProps {
     nonce: number;
   } | null;
   onTopicHeaderActionHandled?: (nonce: number) => void;
+  forcedUnbookmarkMessageIds?: string[];
   onCommunitySummaryChange?: (summary: {
     groupID?: string;
     lastMessageAbstract: string;
@@ -49,7 +50,7 @@ interface CommunityChatViewProps {
     title: string;
     preview: string;
     time: Date;
-  } | null, messageId?: string) => void;
+  } | null, messageId?: string, source?: 'sync' | 'toggle') => void;
 }
 
 
@@ -155,6 +156,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   openCommentDetailMessageId,
   topicHeaderAction,
   onTopicHeaderActionHandled,
+  forcedUnbookmarkMessageIds = [],
   onCommunitySummaryChange,
   onTopicBookmarkChange,
 }) => {
@@ -320,7 +322,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         title,
         preview,
         time,
-      });
+      }, undefined, 'sync');
     }
   }, [groupID, groupName, groupAvatarUrl, posts, bookmarkedIds, onTopicBookmarkChange]);
 
@@ -364,9 +366,11 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       try {
         const conversationID = `GROUP${groupID}`;
         const savedBookmarks = await loadTopicBookmarkIdsFromConversation(conversationID);
-        if (!cancelled) setBookmarkedIds(savedBookmarks);
+        const blocked = new Set(forcedUnbookmarkMessageIds || []);
+        const effectiveBookmarks = new Set(Array.from(savedBookmarks).filter((id) => !blocked.has(id)));
+        if (!cancelled) setBookmarkedIds(effectiveBookmarks);
 
-        const loadedPosts = await loadCommunityMessages(groupID, savedBookmarks);
+        const loadedPosts = await loadCommunityMessages(groupID, effectiveBookmarks);
         if (!cancelled) setPosts(loadedPosts);
       } catch (err) {
         console.error('[Community] Failed to load messages:', err);
@@ -411,7 +415,21 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       cancelled = true;
       unsubscribe();
     };
-  }, [groupID, currentUserId]);
+  }, [groupID, currentUserId, forcedUnbookmarkMessageIds]);
+
+  useEffect(() => {
+    if (!forcedUnbookmarkMessageIds || forcedUnbookmarkMessageIds.length === 0) return;
+    const blocked = new Set(forcedUnbookmarkMessageIds);
+
+    setBookmarkedIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => !blocked.has(id)));
+      return next;
+    });
+
+    setPosts((prevPosts) =>
+      prevPosts.map((p) => (blocked.has(p.id) ? { ...p, bookmarked: false } : p)),
+    );
+  }, [forcedUnbookmarkMessageIds]);
 
   useEffect(() => {
     if (!openCommentDetailMessageId) {
@@ -621,7 +639,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             p.id === postId ? { ...p, bookmarked: false } : p,
           ),
         );
-        onTopicBookmarkChange?.(null, postId);
+        onTopicBookmarkChange?.(null, postId, 'toggle');
       } else {
         newSet.add(postId);
         setPosts((prevPosts) =>
@@ -645,7 +663,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
               title,
               preview,
               time,
-            });
+            }, undefined, 'toggle');
 
             return { ...p, bookmarked: true };
           }),
@@ -682,7 +700,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       ),
     );
 
-    onTopicBookmarkChange?.(null, postId);
+    onTopicBookmarkChange?.(null, postId, 'toggle');
 
     try {
       const latest = await loadTopicBookmarkIdsFromConversation(conversationID);
