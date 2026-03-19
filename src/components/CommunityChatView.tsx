@@ -625,31 +625,44 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
     if (!finalContent.trim() || !groupID) return;
 
+    const tempId = `temp_${Date.now()}`;
+    const trimmed = finalContent.trim();
+
+    // 乐观更新：立即显示帖子，不等服务端响应
+    const optimisticPost: CommunityPost = {
+      id: tempId,
+      content: trimmed,
+      sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
+      senderID: loginUserInfo?.userId || '',
+      avatarUrl: loginUserInfo?.avatarUrl || '',
+      time: new Date(),
+      likes: [],
+      comments: [],
+      bookmarked: false,
+      _rawMessage: null as any,
+    };
+    setPosts((prev) => [...prev, optimisticPost]);
+    setInputValue('');
+    setShowMessageInput(false);
+    setTimeout(scrollToBottom, 100);
+
     try {
-      const res = await sdkSendPost(groupID, finalContent.trim());
+      const res = await sdkSendPost(groupID, trimmed);
       const sent = res?.data?.message;
 
       if (sent) {
-        const newPost: CommunityPost = {
-          id: sent.ID,
-          content: finalContent.trim(),
-          sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
-          senderID: loginUserInfo?.userId || '',
-          avatarUrl: loginUserInfo?.avatarUrl || '',
-          time: new Date((sent.time || Date.now() / 1000) * 1000),
-          likes: [],
-          comments: [],
-          bookmarked: false,
-          _rawMessage: sent,
-        };
-        setPosts((prev) => [...prev, newPost]);
-        setTimeout(scrollToBottom, 100);
+        // 用服务端真实数据替换临时帖子
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === tempId
+              ? { ...p, id: sent.ID, time: new Date((sent.time || Date.now() / 1000) * 1000), _rawMessage: sent }
+              : p,
+          ),
+        );
       }
-
-      setInputValue('');
-      setShowMessageInput(false);
     } catch (err) {
       console.error('[Community] Failed to send post:', err);
+      setPosts((prev) => prev.filter((p) => p.id !== tempId));
       alert('发送失败，请重试');
     }
   };
@@ -699,36 +712,60 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     const content = commentDraft.trim();
     if (!content || !groupID) return;
 
+    const tempId = `temp_comment_${Date.now()}`;
+
+    // 乐观更新：立即显示评论
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        return {
+          ...p,
+          comments: [
+            ...p.comments,
+            {
+              id: tempId,
+              content,
+              sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
+              senderID: loginUserInfo?.userId || '',
+              time: new Date(),
+              postMessageID: postId,
+            },
+          ],
+        };
+      }),
+    );
+    setCommentDraft('');
+    setTimeout(scrollToBottom, 100);
+
     try {
       const res = await sdkSendComment(groupID, postId, content);
       const sent = res?.data?.message;
 
       if (sent) {
+        // 用服务端真实数据替换临时评论
         setPosts((prev) =>
           prev.map((p) => {
             if (p.id !== postId) return p;
-            if (p.comments.some((c) => c.id === sent.ID)) return p;
             return {
               ...p,
-              comments: [
-                ...p.comments,
-                {
-                  id: sent.ID,
-                  content,
-                  sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
-                  senderID: loginUserInfo?.userId || '',
-                  time: new Date((sent.time || Date.now() / 1000) * 1000),
-                  postMessageID: postId,
-                },
-              ],
+              comments: p.comments.map((c) =>
+                c.id === tempId
+                  ? { ...c, id: sent.ID, time: new Date((sent.time || Date.now() / 1000) * 1000) }
+                  : c,
+              ),
             };
           }),
         );
-        setTimeout(scrollToBottom, 100);
       }
-      setCommentDraft('');
     } catch (err) {
       console.error('[Community] Failed to send comment:', err);
+      // 回滚乐观更新
+      setPosts((prev) =>
+        prev.map((p) => {
+          if (p.id !== postId) return p;
+          return { ...p, comments: p.comments.filter((c) => c.id !== tempId) };
+        }),
+      );
       alert('评论发送失败');
     }
   };
