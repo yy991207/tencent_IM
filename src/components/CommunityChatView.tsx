@@ -616,13 +616,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   // 处理发送留言（通过 SDK 发送自定义消息）
   const handleSendMessage = async () => {
-    // 使用 Vditor 的当前值，并清理可能残留的 Base64（双重保险）
     let finalContent = vditor ? vditor.getValue() : inputValue;
-    
-    // 如果由于某种极端情况仍存在 base64，将其过滤掉，避免发送大包
-    if (finalContent.includes('data:image')) {
-      finalContent = finalContent.replace(/!\[.*?\]\(data:image\/.*?;base64,.*?\)/g, '[图片上传失败]');
-    }
 
     if (!finalContent.trim() || !groupID) return;
 
