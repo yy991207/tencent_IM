@@ -3,8 +3,13 @@ import { ConversationList, ConversationPreview, useLoginState } from '@tencentcl
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch } from 'react-icons/fi';
-import { MdEditor, MdPreview } from 'md-editor-rt';
+import { MdPreview } from 'md-editor-rt';
 import 'md-editor-rt/lib/style.css';
+
+// 引入 Vditor
+import Vditor from 'vditor';
+import 'vditor/dist/index.css';
+
 import {
   type CommunityPost,
   type CommunityLikeUser,
@@ -458,18 +463,90 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     fetchGroupInfo();
   }, [groupID]);
 
+  const [vditor, setVditor] = useState<Vditor>();
+  const vditorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showMessageInput || !vditorRef.current) return;
+
+    const vd = new Vditor(vditorRef.current, {
+      height: 400,
+      placeholder: '输入留言内容...',
+      theme: 'classic',
+      icon: 'ant',
+      mode: 'ir', // 即时渲染模式 (Typora 模式)
+      cache: { enable: false },
+      toolbarConfig: { hide: false },
+      toolbar: [
+        'emoji',
+        'headings',
+        'bold',
+        'italic',
+        'strike',
+        'link',
+        '|',
+        'list',
+        'ordered-list',
+        'check',
+        'outdent',
+        'indent',
+        '|',
+        'quote',
+        'line',
+        'code',
+        'inline-code',
+        'insert-before',
+        'insert-after',
+        '|',
+        'upload',
+        'table',
+        '|',
+        'undo',
+        'redo',
+      ],
+      upload: {
+        accept: 'image/*',
+        handler: (files) => {
+          onUploadImg(files, (urls) => {
+            if (urls && urls.length > 0) {
+              urls.forEach(url => {
+                vd.insertValue(`\n![](${url})\n`);
+              });
+            }
+          });
+          // 返回 null 告诉 Vditor 我们接管了上传流程，不要插入默认的预览代码
+          return null;
+        },
+      },
+      input: (value) => {
+        setInputValue(value);
+      },
+      after: () => {
+        vd.setValue(inputValue);
+        setVditor(vd);
+      },
+    });
+
+    return () => {
+      vd.destroy();
+      setVditor(undefined);
+    };
+  }, [showMessageInput]);
+
   // 处理发送留言（通过 SDK 发送自定义消息）
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !groupID) return;
+    // 使用 Vditor 的当前值
+    const finalContent = vditor ? vditor.getValue() : inputValue;
+    if (!finalContent.trim() || !groupID) return;
 
     try {
-      const res = await sdkSendPost(groupID, inputValue.trim());
+      const res = await sdkSendPost(groupID, finalContent.trim());
       const sent = res?.data?.message;
 
       if (sent) {
         const newPost: CommunityPost = {
           id: sent.ID,
-          content: inputValue.trim(),
+          content: finalContent.trim(),
           sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
           senderID: loginUserInfo?.userId || '',
           avatarUrl: loginUserInfo?.avatarUrl || '',
@@ -1085,21 +1162,13 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
             {/* 模态框主体 - 文本输入区 */}
             <div className="modal-body">
-              <MdEditor
-                modelValue={inputValue}
-                onChange={setInputValue}
-                onUploadImg={onUploadImg}
-                placeholder="输入留言内容..."
-                language="zh-CN"
-                toolbarsExclude={['github']}
-                style={{ height: '400px' }}
-              />
+              <div ref={vditorRef} className="vditor-container" />
             </div>
 
             {/* 模态框底部 - 操作按钮 */}
             <div className="modal-footer">
               <div className="footer-left">
-                <span className="char-count">{inputValue.length} 字</span>
+                <span className="char-count">{(vditor ? vditor.getValue() : inputValue).length} 字</span>
               </div>
               <div className="footer-right">
                 <button
@@ -1114,7 +1183,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                 <button
                   className="send-button"
                   onClick={handleSendMessage}
-                  disabled={!inputValue.trim()}
+                  disabled={!(vditor ? vditor.getValue() : inputValue).trim()}
                 >
                   发送
                 </button>
@@ -2103,31 +2172,37 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         /* 模态框主体 */
         .modal-body {
           flex: 1;
-          padding: 24px;
+          padding: 0;
           overflow: hidden;
+          background: #fff;
+          display: flex;
+          flex-direction: column;
+          min-height: 400px;
+          max-height: 60vh;
         }
 
-        .message-textarea {
-          width: 100%;
-          height: 300px;
-          border: 1px solid #e0e0e0;
-          border-radius: 8px;
-          padding: 16px;
-          font-size: 15px;
-          resize: none;
-          font-family: inherit;
-          line-height: 1.6;
-          box-sizing: border-box;
-          transition: border-color 0.2s;
+        /* 自定义 ByteMD 样式 */
+        .modal-body .bytemd {
+          height: 100% !important;
+          border: none !important;
         }
 
-        .message-textarea:focus {
-          outline: none;
-          border-color: #1890ff;
+        .modal-body .bytemd-toolbar {
+          background-color: #fafafa !important;
+          border-bottom: 1px solid #f0f0f0 !important;
+          padding: 0 12px !important;
         }
 
-        .message-textarea::placeholder {
-          color: #bbb;
+        .modal-body .bytemd-editor .CodeMirror {
+          font-size: 15px !important;
+          line-height: 1.6 !important;
+          padding: 16px !important;
+        }
+
+        .modal-body .bytemd-status {
+          border-top: 1px solid #f0f0f0 !important;
+          background-color: #fafafa !important;
+          display: none !important;
         }
 
         /* 模态框底部 */
@@ -2137,7 +2212,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           justify-content: space-between;
           padding: 16px 24px;
           border-top: 1px solid #e8e8e8;
-          background: #fafafa;
+          background: #fff;
           border-radius: 0 0 16px 16px;
         }
 
