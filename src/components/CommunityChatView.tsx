@@ -31,10 +31,11 @@ interface CommunityChatViewProps {
   embedded?: boolean;         // 嵌入模式：不展示顶部返回头，避免影响外层会话布局
   openCommentDetailMessageId?: string | null; // 外部触发打开评论详情
   topicHeaderAction?: {
-    type: 'share' | 'bookmark';
+    type: 'share' | 'bookmark' | 'unbookmark';
     messageId: string;
     nonce: number;
   } | null;
+  onTopicHeaderActionHandled?: (nonce: number) => void;
   onCommunitySummaryChange?: (summary: {
     groupID?: string;
     lastMessageAbstract: string;
@@ -153,6 +154,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   embedded = false,
   openCommentDetailMessageId,
   topicHeaderAction,
+  onTopicHeaderActionHandled,
   onCommunitySummaryChange,
   onTopicBookmarkChange,
 }) => {
@@ -657,6 +659,54 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     });
   };
 
+  const handleUnbookmark = async (postId: string) => {
+    if (!groupID) return;
+
+    const conversationID = `GROUP${groupID}`;
+
+    console.log('[TopicBookmarks] handleUnbookmark start', {
+      groupID,
+      postId,
+      bookmarkedIds: Array.from(bookmarkedIds),
+    });
+
+    setBookmarkedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(postId);
+      return next;
+    });
+
+    setPosts((prevPosts) =>
+      prevPosts.map((p) =>
+        p.id === postId ? { ...p, bookmarked: false } : p,
+      ),
+    );
+
+    onTopicBookmarkChange?.(null, postId);
+
+    try {
+      const latest = await loadTopicBookmarkIdsFromConversation(conversationID);
+      console.log('[TopicBookmarks] handleUnbookmark loaded latest before save', {
+        groupID,
+        postId,
+        latestIds: Array.from(latest),
+      });
+      latest.delete(postId);
+      await saveTopicBookmarkIdsToConversation(conversationID, latest);
+      console.log('[TopicBookmarks] handleUnbookmark saved latest', {
+        groupID,
+        postId,
+        savedIds: Array.from(latest),
+      });
+    } catch {
+      // 兜底：读取失败时，不阻塞 UI 状态更新
+      console.log('[TopicBookmarks] handleUnbookmark failed to persist', {
+        groupID,
+        postId,
+      });
+    }
+  };
+
   // 格式化时间
   const formatTime = (date: Date) => {
     const month = date.getMonth() + 1;
@@ -675,8 +725,13 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   useEffect(() => {
     if (!topicHeaderAction?.messageId) return;
+    onTopicHeaderActionHandled?.(topicHeaderAction.nonce);
     if (topicHeaderAction.type === 'share') {
       handleShare(topicHeaderAction.messageId);
+      return;
+    }
+    if (topicHeaderAction.type === 'unbookmark') {
+      handleUnbookmark(topicHeaderAction.messageId);
       return;
     }
     if (topicHeaderAction.type === 'bookmark') {

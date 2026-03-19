@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, useMemo } from "react";
+import { useEffect, useLayoutEffect, useState, useMemo, useRef } from "react";
 import {
   UIKitProvider,
   useLoginState,
@@ -137,10 +137,11 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   const [topicBookmarks, setTopicBookmarks] = useState<TopicBookmarkItem[]>([]);
   const [currentTopicBookmark, setCurrentTopicBookmark] = useState<TopicBookmarkItem | null>(null);
   const [topicHeaderAction, setTopicHeaderAction] = useState<{
-    type: 'share' | 'bookmark';
+    type: 'share' | 'bookmark' | 'unbookmark';
     messageId: string;
     nonce: number;
   } | null>(null);
+  const handledTopicHeaderActionNonceRef = useRef<number | null>(null);
 
   const [communityConversationSummary, setCommunityConversationSummary] = useState<Record<string, {
     lastMessageAbstract: string;
@@ -166,6 +167,22 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   });
 
   const currentUserId = loginUserInfo?.userId || '';
+  const pendingUnbookmarkKeysRef = useRef<Map<string, number>>(new Map());
+  const UNBOOKMARK_SYNC_GRACE_MS = 8000;
+
+  const buildTopicBookmarkKey = (groupID?: string, messageId?: string) => `${groupID || ''}:${messageId || ''}`;
+  const logTopicBookmarkState = (tag: string, extra?: Record<string, unknown>) => {
+    console.log('[TopicBookmarks]', tag, {
+      topicBookmarks: topicBookmarks.map((item) => ({
+        key: buildTopicBookmarkKey(item.groupID, item.messageId),
+        title: item.title,
+      })),
+      pendingUnbookmarkKeys: Array.from(pendingUnbookmarkKeysRef.current.keys()),
+      currentCommunity: currentCommunity?.groupID || null,
+      currentTopicBookmark: currentTopicBookmark ? buildTopicBookmarkKey(currentTopicBookmark.groupID, currentTopicBookmark.messageId) : null,
+      ...extra,
+    });
+  };
 
   const refreshTopicBookmarksFromSDK = async () => {
     // 说明：话题入口的“收藏关系”存储在对应社群会话的 customData 中（每个会话 256 bytes）。
@@ -175,11 +192,20 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       const res = await engine?.TUIConversation?.getConversationList?.();
       const convList: any[] = res?.data?.conversationList || res?.data || [];
       if (!Array.isArray(convList) || convList.length === 0) {
-        setTopicBookmarks([]);
+        // 会话列表偶发空返回时，保留本地已渲染收藏，避免列表被清空后再重建导致重排。
+        logTopicBookmarkState('refresh skipped: empty conversation list');
         return;
       }
 
       const list: TopicBookmarkItem[] = [];
+      const sdkRawKeys = new Set<string>();
+      const nowTs = Date.now();
+
+      for (const [key, ts] of Array.from(pendingUnbookmarkKeysRef.current.entries())) {
+        if (nowTs - ts > UNBOOKMARK_SYNC_GRACE_MS) {
+          pendingUnbookmarkKeysRef.current.delete(key);
+        }
+      }
 
       for (const conv of convList) {
         const groupProfile = conv?.groupProfile;
@@ -194,6 +220,14 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         if (!ids || ids.size === 0) continue;
 
         for (const messageId of ids) {
+          const key = buildTopicBookmarkKey(groupID, messageId);
+          sdkRawKeys.add(key);
+
+          const removedAt = pendingUnbookmarkKeysRef.current.get(key);
+          if (typeof removedAt === 'number' && nowTs - removedAt <= UNBOOKMARK_SYNC_GRACE_MS) {
+            continue;
+          }
+
           list.push({
             groupID,
             groupName: groupProfile?.name || '话题论坛',
@@ -206,26 +240,92 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
         }
       }
 
+      for (const key of Array.from(pendingUnbookmarkKeysRef.current.keys())) {
+        if (!sdkRawKeys.has(key)) {
+          pendingUnbookmarkKeysRef.current.delete(key);
+        }
+      }
+
+      // 收集 SDK 中仍然存在的社群 groupID（用于判断社群是否已解散）
+      const existingGroupIds = new Set<string>();
+      for (const conv of convList) {
+        const gp = conv?.groupProfile;
+        if (gp?.type === 'Community' && gp?.groupID) {
+          existingGroupIds.add(gp.groupID);
+        }
+      }
+
       setTopicBookmarks((prev) => {
         const prevMap = new Map<string, TopicBookmarkItem>();
         prev.forEach((item) => {
-          prevMap.set(`${item.groupID || ''}:${item.messageId}`, item);
+          prevMap.set(buildTopicBookmarkKey(item.groupID, item.messageId), item);
         });
-        return list.map((item) => {
-          const key = `${item.groupID || ''}:${item.messageId}`;
+
+        const sdkKeys = new Set<string>();
+        const sdkMergedMap = new Map<string, TopicBookmarkItem>();
+        list.forEach((item) => {
+          const key = buildTopicBookmarkKey(item.groupID, item.messageId);
+          sdkKeys.add(key);
           const existed = prevMap.get(key);
-          if (!existed) return item;
-          return {
+          const mergedItem = !existed ? item : {
             ...item,
             title: existed.title || item.title,
             preview: existed.preview || item.preview,
             time: existed.time || item.time,
           };
+          sdkMergedMap.set(key, mergedItem);
         });
+
+        // 保持已存在收藏项的相对顺序，避免“先在顶部出现，再跳位”
+        // （SDK 回刷时 list 顺序可能与本地即时插入顺序不同）。
+        const merged: TopicBookmarkItem[] = [];
+        for (const item of prev) {
+          const key = buildTopicBookmarkKey(item.groupID, item.messageId);
+          const sdkItem = sdkMergedMap.get(key);
+          if (sdkItem) {
+            merged.push(sdkItem);
+            sdkMergedMap.delete(key);
+          }
+        }
+
+        const newcomers: TopicBookmarkItem[] = [];
+        for (const item of list) {
+          const key = buildTopicBookmarkKey(item.groupID, item.messageId);
+          const sdkItem = sdkMergedMap.get(key);
+          if (!sdkItem) continue;
+          newcomers.push(sdkItem);
+          sdkMergedMap.delete(key);
+        }
+
+        // 默认规则：新出现的收藏入口置顶。
+        if (newcomers.length > 0) {
+          merged.unshift(...newcomers);
+        }
+
+        // 保留本地已有但 SDK 尚未同步的收藏条目（异步写入可能还未完成），
+        // 但如果对应社群已不存在（被解散/退出），则不保留。
+        for (const item of prev) {
+          const key = buildTopicBookmarkKey(item.groupID, item.messageId);
+          const isPendingUnbookmark = pendingUnbookmarkKeysRef.current.has(key);
+          if (!isPendingUnbookmark && !sdkKeys.has(key) && item.groupID && existingGroupIds.has(item.groupID)) {
+            merged.push(item);
+          }
+        }
+
+        console.log('[TopicBookmarks] refresh merge result', {
+          prevKeys: prev.map((item) => buildTopicBookmarkKey(item.groupID, item.messageId)),
+          sdkKeys: Array.from(sdkKeys),
+          sdkRawKeys: Array.from(sdkRawKeys),
+          mergedKeys: merged.map((item) => buildTopicBookmarkKey(item.groupID, item.messageId)),
+          pendingUnbookmarkKeys: Array.from(pendingUnbookmarkKeysRef.current.keys()),
+        });
+
+        return merged;
       });
     } catch {
-      // 会话列表拉取失败时，不阻塞主流程
-      setTopicBookmarks([]);
+      // 会话列表拉取失败时，不阻塞主流程，也不清空本地收藏（避免抖动/重排）
+      logTopicBookmarkState('refresh failed');
+      return;
     }
   };
 
@@ -264,10 +364,16 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     const messageId = currentTopicBookmark?.messageId;
     if (!messageId) return;
     setTopicHeaderAction({
-      type: 'bookmark',
+      type: 'unbookmark',
       messageId,
       nonce: Date.now(),
     });
+  };
+
+  const handleTopicHeaderActionHandled = (nonce: number) => {
+    if (handledTopicHeaderActionNonceRef.current === nonce) return;
+    handledTopicHeaderActionNonceRef.current = nonce;
+    setTopicHeaderAction((prev) => (prev?.nonce === nonce ? null : prev));
   };
 
   // 初始化默认会话
@@ -299,30 +405,14 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       }, 300);
     };
 
-    const handleGroupListUpdated = (event: any) => {
-      const groupList: any[] = event?.data || [];
-      const validGroupIds = new Set(
-        (Array.isArray(groupList) ? groupList : [])
-          .map((g) => g?.groupID)
-          .filter(Boolean),
-      );
-
-      setTopicBookmarks((prev) => prev.filter((t) => !t.groupID || validGroupIds.has(t.groupID)));
+    // 注意：SDK 的 GROUP_LIST_UPDATED / CONVERSATION_LIST_UPDATED 事件携带的是增量数据，
+    // 不能当作全量列表来过滤 topicBookmarks，否则会误删仍然有效的收藏条目。
+    // 只通过 scheduleRefresh 做全量刷新来清理已解散/退出的社群收藏。
+    const handleGroupListUpdated = () => {
       scheduleRefresh();
     };
 
-    const handleConversationListUpdated = (event: any) => {
-      const convList: any[] = event?.data || [];
-      if (Array.isArray(convList) && convList.length > 0) {
-        const validCommunityGroupIds = new Set(
-          convList
-            .map((c) => c?.groupProfile)
-            .filter((gp) => gp?.type === 'Community')
-            .map((gp) => gp?.groupID)
-            .filter(Boolean),
-        );
-        setTopicBookmarks((prev) => prev.filter((t) => !t.groupID || validCommunityGroupIds.has(t.groupID)));
-      }
+    const handleConversationListUpdated = () => {
       scheduleRefresh();
     };
 
@@ -729,6 +819,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                     hideCommunityTabs={Boolean(currentTopicBookmark)}
                     openCommentDetailMessageId={openCommunityCommentDetailMessageId}
                     topicHeaderAction={topicHeaderAction}
+                    onTopicHeaderActionHandled={handleTopicHeaderActionHandled}
                     onCommunitySummaryChange={(summary) => {
                       if (!summary.groupID) return;
                       setCommunityConversationSummary((prev) => ({
@@ -740,18 +831,29 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                       }));
                     }}
                     onTopicBookmarkChange={(topic, messageId) => {
+                      console.log('[TopicBookmarks] onTopicBookmarkChange(layout-with-rail)', {
+                        topicKey: topic ? buildTopicBookmarkKey(topic.groupID, topic.messageId) : null,
+                        messageId,
+                        currentCommunity: currentCommunity?.groupID || null,
+                        pendingUnbookmarkKeys: Array.from(pendingUnbookmarkKeysRef.current.keys()),
+                      });
                       setOpenCommunityCommentDetailMessageId(null);
                       setTopicBookmarks((prev) => {
                         if (!topic) {
                           if (!messageId) return prev;
-                          const next = prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+                          pendingUnbookmarkKeysRef.current.set(buildTopicBookmarkKey(currentCommunity.groupID, messageId), Date.now());
+                          const next = prev.filter((t) => buildTopicBookmarkKey(t.groupID, t.messageId) !== buildTopicBookmarkKey(currentCommunity.groupID, messageId));
                           return next;
                         }
 
-                        const key = `${topic.groupID || ''}:${topic.messageId}`;
-                        const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
+                        const key = buildTopicBookmarkKey(topic.groupID, topic.messageId);
+                        if (pendingUnbookmarkKeysRef.current.has(key)) {
+                          // 刚取消收藏后，忽略短时间内的回刷更新，避免条目“复活”。
+                          return prev;
+                        }
+                        const exists = prev.some((t) => buildTopicBookmarkKey(t.groupID, t.messageId) === key);
                         if (exists) {
-                          const next = prev.map((t) => (`${t.groupID || ''}:${t.messageId}` === key ? topic : t));
+                          const next = prev.map((t) => (buildTopicBookmarkKey(t.groupID, t.messageId) === key ? topic : t));
                           return next;
                         }
                         const next = [topic, ...prev];
@@ -801,6 +903,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 hideCommunityTabs={Boolean(currentTopicBookmark)}
                 openCommentDetailMessageId={openCommunityCommentDetailMessageId}
                 topicHeaderAction={topicHeaderAction}
+                onTopicHeaderActionHandled={handleTopicHeaderActionHandled}
                 onCommunitySummaryChange={(summary) => {
                   if (!summary.groupID) return;
                   setCommunityConversationSummary((prev) => ({
@@ -812,17 +915,28 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                   }));
                 }}
                 onTopicBookmarkChange={(topic, messageId) => {
+                  console.log('[TopicBookmarks] onTopicBookmarkChange(layout-plain)', {
+                    topicKey: topic ? buildTopicBookmarkKey(topic.groupID, topic.messageId) : null,
+                    messageId,
+                    currentCommunity: currentCommunity?.groupID || null,
+                    pendingUnbookmarkKeys: Array.from(pendingUnbookmarkKeysRef.current.keys()),
+                  });
                   setTopicBookmarks((prev) => {
                     if (!topic) {
                       if (!messageId) return prev;
-                      const next = prev.filter((t) => `${t.groupID || ''}:${t.messageId}` !== `${currentCommunity.groupID}:${messageId}`);
+                      pendingUnbookmarkKeysRef.current.set(buildTopicBookmarkKey(currentCommunity.groupID, messageId), Date.now());
+                      const next = prev.filter((t) => buildTopicBookmarkKey(t.groupID, t.messageId) !== buildTopicBookmarkKey(currentCommunity.groupID, messageId));
                       return next;
                     }
 
-                    const key = `${topic.groupID || ''}:${topic.messageId}`;
-                    const exists = prev.some((t) => `${t.groupID || ''}:${t.messageId}` === key);
+                    const key = buildTopicBookmarkKey(topic.groupID, topic.messageId);
+                    if (pendingUnbookmarkKeysRef.current.has(key)) {
+                      // 刚取消收藏后，忽略短时间内的回刷更新，避免条目“复活”。
+                      return prev;
+                    }
+                    const exists = prev.some((t) => buildTopicBookmarkKey(t.groupID, t.messageId) === key);
                     if (exists) {
-                      const next = prev.map((t) => (`${t.groupID || ''}:${t.messageId}` === key ? topic : t));
+                      const next = prev.map((t) => (buildTopicBookmarkKey(t.groupID, t.messageId) === key ? topic : t));
                       return next;
                     }
                     const next = [topic, ...prev];
