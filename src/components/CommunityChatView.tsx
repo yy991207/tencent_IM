@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ConversationList, ConversationPreview, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark, FiSend } from 'react-icons/fi';
-import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch } from 'react-icons/fi';
+import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch, FiMoreHorizontal, FiMapPin, FiChevronsUp, FiGlobe, FiXCircle, FiCornerUpLeft, FiEdit2, FiCheckSquare } from 'react-icons/fi';
 import { MdPreview } from 'md-editor-rt';
 import 'md-editor-rt/lib/style.css';
 
@@ -185,6 +185,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [showMemberList, setShowMemberList] = useState(false);
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
   const [memberSearchValue, setMemberSearchValue] = useState('');
+  const [moreMenuMessageId, setMoreMenuMessageId] = useState<string | null>(null);
 
   const currentUserId = loginUserInfo?.userId || '';
 
@@ -936,6 +937,19 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     return `${month}月${day}日 ${timeStr}`;
   };
 
+  // 点击外部关闭更多菜单
+  useEffect(() => {
+    if (!moreMenuMessageId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.more-menu-wrapper')) {
+        setMoreMenuMessageId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [moreMenuMessageId]);
+
   const displayPosts = useMemo(() => {
     if (activeTab === 'all') return posts;
     return posts.filter(post => bookmarkedIds.has(post.id) || post.bookmarked);
@@ -1060,6 +1074,44 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
             return (
               <div key={msg.id} className="message-item">
+                {/* 右上角三点更多按钮 */}
+                <div className="more-menu-wrapper">
+                  <button
+                    className="more-menu-trigger"
+                    onClick={() => setMoreMenuMessageId((prev) => (prev === msg.id ? null : msg.id))}
+                    title="更多"
+                    type="button"
+                  >
+                    <FiMoreHorizontal />
+                  </button>
+                  {moreMenuMessageId === msg.id && (
+                    <div className="more-menu-dropdown">
+                      <button className="more-menu-item" onClick={() => setMoreMenuMessageId(null)}>
+                        <FiMapPin className="more-menu-item-icon" /><span>Pin</span>
+                      </button>
+                      <button className="more-menu-item" onClick={() => setMoreMenuMessageId(null)}>
+                        <FiChevronsUp className="more-menu-item-icon" /><span>置顶话题</span>
+                      </button>
+                      <button className="more-menu-item" onClick={() => setMoreMenuMessageId(null)}>
+                        <FiGlobe className="more-menu-item-icon" /><span>翻译</span>
+                      </button>
+                      <div className="more-menu-divider" />
+                      <button className="more-menu-item" onClick={() => setMoreMenuMessageId(null)}>
+                        <FiXCircle className="more-menu-item-icon" /><span>关闭话题</span>
+                      </button>
+                      <button className="more-menu-item" onClick={() => setMoreMenuMessageId(null)}>
+                        <FiCornerUpLeft className="more-menu-item-icon" /><span>撤回话题</span>
+                      </button>
+                      <button className="more-menu-item" onClick={() => setMoreMenuMessageId(null)}>
+                        <FiEdit2 className="more-menu-item-icon" /><span>编辑话题</span>
+                      </button>
+                      <div className="more-menu-divider" />
+                      <button className="more-menu-item" onClick={() => setMoreMenuMessageId(null)}>
+                        <FiCheckSquare className="more-menu-item-icon" /><span>添加任务</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="message-avatar">
                   {msg.senderID === currentUserId ? <FiUser /> : <FiUsers />}
                 </div>
@@ -1575,6 +1627,93 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           border-radius: 8px;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
           border: 1px solid #f0f0f0;
+          position: relative;
+        }
+
+        .more-menu-wrapper {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          z-index: 10;
+        }
+
+        .more-menu-trigger {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #bfbfbf;
+          padding: 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          opacity: 0;
+        }
+
+        .message-item:hover .more-menu-trigger {
+          opacity: 1;
+        }
+
+        .more-menu-trigger:hover {
+          background: #f5f5f5;
+          color: #595959;
+        }
+
+        .more-menu-trigger svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .more-menu-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          margin-top: 4px;
+          background: #fff;
+          border-radius: 8px;
+          box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+          border: 1px solid #f0f0f0;
+          min-width: 160px;
+          padding: 4px 0;
+          animation: menuFadeIn 0.15s ease-out;
+        }
+
+        @keyframes menuFadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .more-menu-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          padding: 8px 16px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 13px;
+          color: #333;
+          transition: background 0.15s;
+          white-space: nowrap;
+        }
+
+        .more-menu-item:hover {
+          background: #f5f5f5;
+        }
+
+        .more-menu-item-icon {
+          width: 16px;
+          height: 16px;
+          color: #8c8c8c;
+          flex-shrink: 0;
+        }
+
+        .more-menu-divider {
+          height: 1px;
+          background: #f0f0f0;
+          margin: 4px 0;
         }
 
         .message-avatar {
