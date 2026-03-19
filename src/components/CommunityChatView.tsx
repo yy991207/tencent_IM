@@ -477,6 +477,25 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       mode: 'ir', // 即时渲染模式 (Typora 模式)
       cache: { enable: false },
       toolbarConfig: { hide: false },
+      preview: {
+        image: {
+          // 接管图片点击事件，防止显示源码，改为查看大图
+          handler: (el: HTMLImageElement) => {
+            const src = el.getAttribute('src');
+            if (src) {
+              // 创建一个临时的全屏预览遮罩
+              const overlay = document.createElement('div');
+              overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:100000;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+              const img = document.createElement('img');
+              img.src = src;
+              img.style.cssText = 'max-width:95%;max-height:95%;object-fit:contain;box-shadow:0 0 20px rgba(0,0,0,0.5);';
+              overlay.appendChild(img);
+              overlay.onclick = () => document.body.removeChild(overlay);
+              document.body.appendChild(overlay);
+            }
+          }
+        }
+      },
       toolbar: [
         'emoji',
         'headings',
@@ -506,15 +525,16 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       ],
       upload: {
         accept: 'image/*',
+        linkToImgUrl: false,
         handler: (files) => {
           onUploadImg(files, (urls) => {
             if (urls && urls.length > 0) {
               urls.forEach(url => {
+                // 直接插入远程地址，不给 Base64 任何存在机会
                 vd.insertValue(`\n![](${url})\n`);
               });
             }
           });
-          // 返回 null 告诉 Vditor 我们接管了上传流程，不要插入默认的预览代码
           return null;
         },
       },
@@ -524,6 +544,59 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       after: () => {
         vd.setValue(inputValue);
         setVditor(vd);
+
+        // 核心修复：拦截编辑区域的点击事件，防止图片及其所在行进入编辑状态显示源码
+        const editorElement = vditorRef.current?.querySelector('.vditor-ir');
+        if (editorElement) {
+          editorElement.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            
+            // 检查点击的是否是图片，或者点击的区域属于一个包含图片的节点
+            const imageNode = target.closest('.vditor-ir__node[data-type="img"]') || (target.tagName === 'IMG' ? target : null);
+            const isClickNearImage = imageNode || target.querySelector('img');
+
+            if (isClickNearImage) {
+              // 阻止进入编辑状态（显示源码）
+              e.preventDefault();
+              e.stopPropagation();
+
+              // 如果点击的是图片本身，或者是点击了图片节点的容器，则触发预览
+              const img = target.tagName === 'IMG' ? (target as HTMLImageElement) : (imageNode?.querySelector('img') as HTMLImageElement);
+              
+              if (img && target.tagName === 'IMG') {
+                // 仅在明确点击图片时触发大图预览
+                const src = img.getAttribute('src');
+                if (src) {
+                  const overlay = document.createElement('div');
+                  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:100000;display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(4px);transition:all 0.3s ease;';
+                  
+                  const imgContainer = document.createElement('div');
+                  imgContainer.style.cssText = 'width:90vw;height:90vh;display:flex;align-items:center;justify-content:center;animation: modalScale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);';
+                  
+                  const previewImg = document.createElement('img');
+                  previewImg.src = src;
+                  previewImg.style.cssText = 'max-width:100%;max-height:100%;min-width:70vw;min-height:70vh;object-fit:contain;box-shadow:0 12px 48px rgba(0,0,0,0.5);border-radius:12px;background:#fff;';
+                  
+                  imgContainer.appendChild(previewImg);
+                  overlay.appendChild(imgContainer);
+                  
+                  const style = document.createElement('style');
+                  style.innerHTML = `@keyframes modalScale { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }`;
+                  document.head.appendChild(style);
+
+                  overlay.onclick = () => {
+                    overlay.style.opacity = '0';
+                    setTimeout(() => {
+                      document.body.removeChild(overlay);
+                      document.head.removeChild(style);
+                    }, 300);
+                  };
+                  document.body.appendChild(overlay);
+                }
+              }
+            }
+          }, true); // 使用捕获阶段
+        }
       },
     });
 
@@ -535,8 +608,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   // 处理发送留言（通过 SDK 发送自定义消息）
   const handleSendMessage = async () => {
-    // 使用 Vditor 的当前值
-    const finalContent = vditor ? vditor.getValue() : inputValue;
+    // 使用 Vditor 的当前值，并清理可能残留的 Base64（双重保险）
+    let finalContent = vditor ? vditor.getValue() : inputValue;
+    
+    // 如果由于某种极端情况仍存在 base64，将其过滤掉，避免发送大包
+    if (finalContent.includes('data:image')) {
+      finalContent = finalContent.replace(/!\[.*?\]\(data:image\/.*?;base64,.*?\)/g, '[图片上传失败]');
+    }
+
     if (!finalContent.trim() || !groupID) return;
 
     try {
@@ -1142,23 +1221,20 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         </div>
       )}
 
-      {/* 输入弹窗 - 大浮窗样式 */}
+      {/* 输入弹窗 - 参考现代编辑器样式 */}
       {showMessageInput && (
         <div className="community-input-overlay">
           <div className="community-input-modal">
-            {/* 模态框头部 */}
-            <div className="modal-header">
-              <span className="modal-title">发布留言</span>
-              <button
-                className="modal-close"
-                onClick={() => {
-                  setShowMessageInput(false);
-                  setInputValue('');
-                }}
-              >
-                <FiX />
-              </button>
-            </div>
+            {/* 顶部的关闭按钮 */}
+            <button
+              className="modal-close-overlay"
+              onClick={() => {
+                setShowMessageInput(false);
+                setInputValue('');
+              }}
+            >
+              <FiX />
+            </button>
 
             {/* 模态框主体 - 文本输入区 */}
             <div className="modal-body">
@@ -1166,26 +1242,24 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             </div>
 
             {/* 模态框底部 - 操作按钮 */}
-            <div className="modal-footer">
-              <div className="footer-left">
+            <div className="modal-footer-modern">
+              <div className="footer-left-modern">
                 <span className="char-count">{(vditor ? vditor.getValue() : inputValue).length} 字</span>
               </div>
-              <div className="footer-right">
+              <div className="footer-right-modern">
+                <div className="footer-icons">
+                  <FiThumbsUp className="footer-icon-btn" title="表情" />
+                  <FiUser className="footer-icon-btn" title="艾特" />
+                  <FiPlus className="footer-icon-btn" title="图片" />
+                  <FiShare2 className="footer-icon-btn" title="更多" />
+                </div>
                 <button
-                  className="cancel-button"
-                  onClick={() => {
-                    setShowMessageInput(false);
-                    setInputValue('');
-                  }}
-                >
-                  取消
-                </button>
-                <button
-                  className="send-button"
+                  className="send-button-modern"
                   onClick={handleSendMessage}
                   disabled={!(vditor ? vditor.getValue() : inputValue).trim()}
+                  title="发送"
                 >
-                  发送
+                  <FiPlus style={{ transform: 'rotate(45deg)' }} />
                 </button>
               </div>
             </div>
@@ -2111,126 +2185,142 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         /* 模态框 */
         .community-input-modal {
-          width: 600px;
+          width: 800px;
           max-width: 90vw;
-          max-height: 80vh;
           background: #fff;
-          border-radius: 16px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+          border-radius: 20px;
+          box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
           display: flex;
           flex-direction: column;
-          animation: slideUp 0.3s ease-out;
+          position: relative;
+          /* overflow: hidden;  <-- 移除这个，避免截断下拉菜单 */
+          animation: modalSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        @keyframes slideUp {
-          from {
-            transform: translateY(20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
+        @keyframes modalSlideUp {
+          from { transform: translateY(30px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
 
-        /* 模态框头部 */
-        .modal-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 20px 24px;
-          border-bottom: 1px solid #e8e8e8;
-        }
-
-        .modal-title {
-          font-size: 18px;
-          font-weight: 600;
-          color: #333;
-        }
-
-        .modal-close {
-          background: none;
+        .modal-close-overlay {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          z-index: 1001;
+          background: #f5f5f5;
           border: none;
-          cursor: pointer;
-          color: #999;
-          padding: 4px;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: color 0.2s;
+          cursor: pointer;
+          color: #999;
+          transition: all 0.2s;
         }
 
-        .modal-close svg {
-          width: 20px;
-          height: 20px;
-        }
-
-        .modal-close:hover {
-          color: #333;
+        .modal-close-overlay:hover {
+          background: #ff4d4f;
+          color: #fff;
         }
 
         /* 模态框主体 */
         .modal-body {
           flex: 1;
           padding: 0;
-          overflow: hidden;
+          /* overflow: hidden;  <-- 移除这个，确保弹出菜单不被截断 */
           background: #fff;
           display: flex;
           flex-direction: column;
-          min-height: 400px;
-          max-height: 60vh;
         }
 
-        /* 自定义 ByteMD 样式 */
-        .modal-body .bytemd {
-          height: 100% !important;
+        .vditor-container {
+          flex: 1;
           border: none !important;
+          min-height: 400px;
         }
 
-        .modal-body .bytemd-toolbar {
-          background-color: #fafafa !important;
+        .vditor {
+          border: none !important;
+          background-color: transparent !important;
+        }
+
+        .vditor-toolbar {
+          background-color: #fff !important;
           border-bottom: 1px solid #f0f0f0 !important;
-          padding: 0 12px !important;
+          padding: 12px 24px !important;
+          z-index: 1002 !important; /* 确保工具栏及其弹出层层级足够高 */
         }
 
-        .modal-body .bytemd-editor .CodeMirror {
-          font-size: 15px !important;
-          line-height: 1.6 !important;
-          padding: 16px !important;
+        .vditor-content {
+          padding: 12px 24px !important;
         }
 
-        .modal-body .bytemd-status {
-          border-top: 1px solid #f0f0f0 !important;
-          background-color: #fafafa !important;
-          display: none !important;
-        }
-
-        /* 模态框底部 */
-        .modal-footer {
+        .modal-footer-modern {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          padding: 16px 24px;
-          border-top: 1px solid #e8e8e8;
+          align-items: center;
+          padding: 12px 24px 20px 24px;
           background: #fff;
-          border-radius: 0 0 16px 16px;
         }
 
-        .footer-left {
+        .footer-left-modern .char-count {
+          font-size: 13px;
+          color: #bfbfbf;
+        }
+
+        .footer-right-modern {
           display: flex;
           align-items: center;
+          gap: 24px;
         }
 
-        .char-count {
-          font-size: 13px;
-          color: #999;
-        }
-
-        .footer-right {
+        .footer-icons {
           display: flex;
-          gap: 12px;
+          gap: 16px;
+          color: #bfbfbf;
         }
 
+        .footer-icon-btn {
+          font-size: 20px;
+          cursor: pointer;
+          transition: color 0.2s;
+        }
+
+        .footer-icon-btn:hover {
+          color: #1890ff;
+        }
+
+        .send-button-modern {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: #1890ff;
+          color: #fff;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+          transition: all 0.2s;
+        }
+
+        .send-button-modern:hover:not(:disabled) {
+          transform: scale(1.05);
+          background: #40a9ff;
+        }
+
+        .send-button-modern:disabled {
+          background: #f5f5f5;
+          color: #d9d9d9;
+          box-shadow: none;
+          cursor: not-allowed;
+        }
+
+        /* 原有按钮样式保留（用于其他地方） */
         .cancel-button,
         .send-button {
           padding: 10px 24px;
