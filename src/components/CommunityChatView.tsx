@@ -190,7 +190,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const currentUserId = loginUserInfo?.userId || '';
 
   // 前端极度压缩图片转 Base64（仅用于 Demo 演示，真实场景请使用后端上传接口）
-  const compressImageToBase64 = (file: File, maxWidth = 300, initialQuality = 0.5): Promise<string | null> => {
+  const compressImageToBase64 = (file: File, maxWidth = 200, initialQuality = 0.4): Promise<string | null> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -213,26 +213,26 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             resolve(null);
             return;
           }
-          
+
           // 绘制白色背景（防止透明 PNG 变黑）
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
-          
+
           let quality = initialQuality;
           let dataUrl = canvas.toDataURL('image/jpeg', quality);
-          
-          // 循环压缩，目标是让 Base64 字符串长度小于 10000 字节（留出 2KB 给其他文本）
-          // 腾讯云 IM 限制 12000 字节
+
+          // 循环压缩，目标 7000 字节，留足空间给文本和 markdown 语法
+          // 腾讯云 IM 自定义消息限制 12000 字节
           let attempts = 0;
-          while (dataUrl.length > 10000 && attempts < 5) {
-            quality -= 0.1;
-            if (quality <= 0.1) quality = 0.1;
+          while (dataUrl.length > 7000 && attempts < 8) {
+            quality -= 0.05;
+            if (quality <= 0.05) quality = 0.05;
             dataUrl = canvas.toDataURL('image/jpeg', quality);
             attempts++;
           }
 
-          if (dataUrl.length > 11000) {
+          if (dataUrl.length > 8000) {
             console.warn('图片压缩后仍然过大，可能导致发送失败。当前长度:', dataUrl.length);
           }
           resolve(dataUrl);
@@ -1350,7 +1350,20 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
             {/* 模态框底部 - 操作按钮 */}
             <div className="modal-footer-modern">
               <div className="footer-left-modern">
-                <span className="char-count">{(vditor ? vditor.getValue() : inputValue).length} 字</span>
+                {(() => {
+                  const content = vditor ? vditor.getValue() : inputValue;
+                  const bytes = new TextEncoder().encode(content).length;
+                  const isWarning = bytes > 9000 && bytes <= 11500;
+                  const isOver = bytes > 11500;
+                  return (
+                    <>
+                      <span className="char-count">{content.length} 字</span>
+                      <span className={`byte-count ${isWarning ? 'warning' : ''} ${isOver ? 'over' : ''}`}>
+                        {bytes} / 12000 B{isOver && ' 超出限制'}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
               <div className="footer-right-modern">
                 <div className="footer-icons">
@@ -1363,7 +1376,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                 <button
                   className="send-button-modern"
                   onClick={handleSendMessage}
-                  disabled={!(vditor ? vditor.getValue() : inputValue).trim()}
+                  disabled={
+                    !(vditor ? vditor.getValue() : inputValue).trim() ||
+                    new TextEncoder().encode((vditor ? vditor.getValue() : inputValue)).length > 11500
+                  }
                   title="发送"
                 >
                   <FiSend />
@@ -2484,6 +2500,22 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         .footer-left-modern .char-count {
           font-size: 13px;
           color: #bfbfbf;
+        }
+
+        .footer-left-modern .byte-count {
+          font-size: 12px;
+          color: #bfbfbf;
+          margin-left: 12px;
+          transition: color 0.2s;
+        }
+
+        .footer-left-modern .byte-count.warning {
+          color: #fa8c16;
+        }
+
+        .footer-left-modern .byte-count.over {
+          color: #ff4d4f;
+          font-weight: 600;
         }
 
         .footer-right-modern {
