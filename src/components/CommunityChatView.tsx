@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ConversationList, ConversationPreview, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
-import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark } from 'react-icons/fi';
+import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark, FiSend } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch } from 'react-icons/fi';
 import { MdPreview } from 'md-editor-rt';
 import 'md-editor-rt/lib/style.css';
@@ -475,6 +475,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       theme: 'classic',
       icon: 'ant',
       mode: 'ir', // 即时渲染模式 (Typora 模式)
+      delay: 1, // 最小防抖延迟（0 会被 Vditor 当作 falsy 回退到默认值）
       cache: { enable: false },
       toolbarConfig: { hide: false },
       preview: {
@@ -539,11 +540,17 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         },
       },
       input: (value) => {
+        // 保留原有的回调，但我们将在 after 中通过原生事件实现更实时的更新
         setInputValue(value);
       },
       after: () => {
         vd.setValue(inputValue);
         setVditor(vd);
+
+        // 监听容器级别的 input/keyup 事件，实现字数和按钮状态的实时更新
+        const updateValue = () => setInputValue(vd.getValue());
+        vditorRef.current?.addEventListener('input', updateValue);
+        vditorRef.current?.addEventListener('keyup', updateValue);
 
         // 核心修复：拦截编辑区域的点击事件，防止图片及其所在行进入编辑状态显示源码
         const editorElement = vditorRef.current?.querySelector('.vditor-ir');
@@ -1225,13 +1232,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       {showMessageInput && (
         <div className="community-input-overlay">
           <div className="community-input-modal">
-            {/* 顶部的关闭按钮 */}
+            {/* 右上角的关闭按钮 - 显式显示 */}
             <button
               className="modal-close-overlay"
               onClick={() => {
                 setShowMessageInput(false);
                 setInputValue('');
               }}
+              title="关闭"
             >
               <FiX />
             </button>
@@ -1253,13 +1261,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                   <FiPlus className="footer-icon-btn" title="图片" />
                   <FiShare2 className="footer-icon-btn" title="更多" />
                 </div>
+                {/* 发送按钮 - 更换为纸飞机图标 */}
                 <button
                   className="send-button-modern"
                   onClick={handleSendMessage}
                   disabled={!(vditor ? vditor.getValue() : inputValue).trim()}
                   title="发送"
                 >
-                  <FiPlus style={{ transform: 'rotate(45deg)' }} />
+                  <FiSend />
                 </button>
               </div>
             </div>
@@ -2183,17 +2192,18 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           }
         }
 
-        /* 模态框 */
+        /* 模态框 - 完全固定尺寸模式 */
         .community-input-modal {
           width: 800px;
+          height: 600px; /* 关键：改为绝对固定高度，不再随内容变化 */
           max-width: 90vw;
+          max-height: 90vh; /* 适配小屏幕的保底方案 */
           background: #fff;
           border-radius: 20px;
           box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
           display: flex;
           flex-direction: column;
           position: relative;
-          /* overflow: hidden;  <-- 移除这个，避免截断下拉菜单 */
           animation: modalSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
@@ -2204,57 +2214,70 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .modal-close-overlay {
           position: absolute;
-          top: 16px;
-          right: 16px;
-          z-index: 1001;
-          background: #f5f5f5;
-          border: none;
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
+          top: 14px;
+          right: 24px;
+          z-index: 2000;
+          background: #fff;
+          border: 1px solid #f0f0f0;
+          width: 28px;
+          height: 28px;
+          border-radius: 4px;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          color: #999;
+          color: #8c8c8c;
           transition: all 0.2s;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
 
         .modal-close-overlay:hover {
           background: #ff4d4f;
           color: #fff;
+          border-color: #ff4d4f;
         }
 
         /* 模态框主体 */
         .modal-body {
           flex: 1;
           padding: 0;
-          /* overflow: hidden;  <-- 移除这个，确保弹出菜单不被截断 */
           background: #fff;
           display: flex;
           flex-direction: column;
+          min-height: 0; /* 允许 flex 项目缩小 */
+          overflow: visible; /* 保持可见，以便显示 Vditor 的弹出菜单 */
         }
 
         .vditor-container {
           flex: 1;
-          border: none !important;
-          min-height: 400px;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
         }
 
         .vditor {
           border: none !important;
-          background-color: transparent !important;
+          display: flex !important;
+          flex-direction: column !important;
+          height: 100% !important;
         }
 
         .vditor-toolbar {
           background-color: #fff !important;
           border-bottom: 1px solid #f0f0f0 !important;
           padding: 12px 24px !important;
-          z-index: 1002 !important; /* 确保工具栏及其弹出层层级足够高 */
+          z-index: 1002 !important;
+          flex-shrink: 0;
         }
 
         .vditor-content {
+          flex: 1 !important;
+          overflow-y: auto !important; /* 强制内容区滚动 */
           padding: 12px 24px !important;
+        }
+
+        .vditor-ir {
+          min-height: 100% !important;
         }
 
         .modal-footer-modern {
@@ -2263,6 +2286,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           align-items: center;
           padding: 12px 24px 20px 24px;
           background: #fff;
+          border-top: 1px solid #f9f9f9;
         }
 
         .footer-left-modern .char-count {
@@ -2293,8 +2317,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         }
 
         .send-button-modern {
-          width: 44px;
-          height: 44px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           background: #1890ff;
           color: #fff;
@@ -2303,7 +2327,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 24px;
+          font-size: 20px;
           box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
           transition: all 0.2s;
         }
@@ -2314,8 +2338,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         }
 
         .send-button-modern:disabled {
-          background: #f5f5f5;
-          color: #d9d9d9;
+          background: #f0f0f0;
+          color: #bfbfbf;
           box-shadow: none;
           cursor: not-allowed;
         }
