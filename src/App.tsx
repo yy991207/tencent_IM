@@ -27,7 +27,7 @@ import CommunityChatView from './components/CommunityChatView';
 import CustomConversationCreate from './components/CustomConversationCreate';
 import { loadRuntimeConfig, type RuntimeConfig, type UserEntry } from './utils/runtimeConfig';
 import React from 'react';
-import { FiShare2, FiBookmark } from 'react-icons/fi';
+import { FiShare2, FiBookmark, FiX } from 'react-icons/fi';
 import { emojiBaseUrl, emojiUrlMap } from './utils/tuiEmoji';
 import { loadTopicBookmarkIdsFromConversation } from './utils/communityMessageService';
 import './App.css';
@@ -141,7 +141,17 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     messageId: string;
     nonce: number;
   } | null>(null);
+  const [commentDetailHeaderAction, setCommentDetailHeaderAction] = useState<{
+    type: 'share' | 'bookmark' | 'close';
+    messageId: string;
+    nonce: number;
+  } | null>(null);
+  const [communityDetailState, setCommunityDetailState] = useState<{ messageId: string | null; bookmarked: boolean }>({
+    messageId: null,
+    bookmarked: false,
+  });
   const handledTopicHeaderActionNonceRef = useRef<number | null>(null);
+  const handledCommentDetailHeaderActionNonceRef = useRef<number | null>(null);
   const [forcedUnbookmarkKeys, setForcedUnbookmarkKeys] = useState<Record<string, number>>({});
   const FORCED_UNBOOKMARK_TTL_MS = 30000;
 
@@ -360,6 +370,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     if (!currentCommunity?.groupID) return;
     setCurrentTopicBookmark(null);
     setOpenCommunityCommentDetailMessageId(null);
+    setCommunityDetailState({ messageId: null, bookmarked: false });
     setShowCommunityView(true);
     setActiveConversation(`GROUP${currentCommunity.groupID}`);
   };
@@ -388,6 +399,26 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     if (handledTopicHeaderActionNonceRef.current === nonce) return;
     handledTopicHeaderActionNonceRef.current = nonce;
     setTopicHeaderAction((prev) => (prev?.nonce === nonce ? null : prev));
+  };
+
+  const handleCommentDetailHeaderAction = (type: 'share' | 'bookmark' | 'close') => {
+    const messageId = communityDetailState.messageId;
+    if (!messageId) return;
+    setCommentDetailHeaderAction({
+      type,
+      messageId,
+      nonce: Date.now(),
+    });
+    if (type === 'close') {
+      // 关闭详情后返回社群帖子流，因此先清理外层“外部打开详情”的标记。
+      setOpenCommunityCommentDetailMessageId(null);
+    }
+  };
+
+  const handleCommentDetailHeaderActionHandled = (nonce: number) => {
+    if (handledCommentDetailHeaderActionNonceRef.current === nonce) return;
+    handledCommentDetailHeaderActionNonceRef.current = nonce;
+    setCommentDetailHeaderAction((prev) => (prev?.nonce === nonce ? null : prev));
   };
 
   // 初始化默认会话
@@ -541,11 +572,13 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
             setShowCommunityView(true);
             setOpenCommunityCommentDetailMessageId(null);
             setCurrentTopicBookmark(null);
+            setCommunityDetailState({ messageId: null, bookmarked: false });
           } else {
             setShowCommunityView(false);
             setCurrentCommunity(null);
             setOpenCommunityCommentDetailMessageId(null);
             setCurrentTopicBookmark(null);
+            setCommunityDetailState({ messageId: null, bookmarked: false });
           }
           setActiveConversation(conversation?.conversationID);
         }}
@@ -603,6 +636,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 setShowCommunityView(true);
                 setOpenCommunityCommentDetailMessageId(t.messageId);
                 setCurrentTopicBookmark(t);
+                setCommunityDetailState({ messageId: t.messageId, bookmarked: true });
                 setActiveConversation(`GROUP${t.groupID}`);
               }}
               style={{ cursor: 'pointer' }}
@@ -657,6 +691,46 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       </div>
     );
   };
+
+  const shouldShowCommentDetailHeaderActions = Boolean(
+    showCommunityView &&
+    currentCommunity &&
+    !currentTopicBookmark &&
+    communityDetailState.messageId,
+  );
+
+  const commentDetailHeaderActions = (
+    <div className="topic-header-actions">
+      <button
+        className="icon-button"
+        onClick={() => handleCommentDetailHeaderAction('share')}
+        title="转发"
+        type="button"
+      >
+        <FiShare2 size={18} />
+      </button>
+      <button
+        className={`icon-button ${communityDetailState.bookmarked ? 'topic-header-bookmark-active' : ''}`}
+        onClick={() => handleCommentDetailHeaderAction('bookmark')}
+        title={communityDetailState.bookmarked ? '取消收藏' : '收藏'}
+        type="button"
+      >
+        {communityDetailState.bookmarked ? (
+          <FiBookmark className="topic-header-bookmark-icon" size={18} />
+        ) : (
+          <FiBookmark size={18} />
+        )}
+      </button>
+      <button
+        className="icon-button"
+        onClick={() => handleCommentDetailHeaderAction('close')}
+        title="关闭"
+        type="button"
+      >
+        <FiX size={18} />
+      </button>
+    </div>
+  );
 
   if (status === LoginStatus.ERROR) {
     return (
@@ -778,6 +852,8 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                     <FiBookmark className="topic-header-bookmark-icon" size={18} />
                   </button>
                 </div>
+              ) : shouldShowCommentDetailHeaderActions ? (
+                commentDetailHeaderActions
               ) : (
                 <div className="header-actions">
                   <button
@@ -822,7 +898,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                         </div>
                       </div>
                     ) : undefined}
-                    ChatHeaderRight={undefined}
+                    ChatHeaderRight={shouldShowCommentDetailHeaderActions ? commentDetailHeaderActions : undefined}
                   />
                   <CommunityChatView
                     embedded={true}
@@ -834,6 +910,9 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                     openCommentDetailMessageId={openCommunityCommentDetailMessageId}
                     topicHeaderAction={topicHeaderAction}
                     onTopicHeaderActionHandled={handleTopicHeaderActionHandled}
+                    commentDetailHeaderAction={commentDetailHeaderAction}
+                    onCommentDetailHeaderActionHandled={handleCommentDetailHeaderActionHandled}
+                    onCommentDetailStateChange={setCommunityDetailState}
                     forcedUnbookmarkMessageIds={forcedUnbookmarkMessageIds}
                     onCommunitySummaryChange={(summary) => {
                       if (!summary.groupID) return;
@@ -938,6 +1017,9 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
                 openCommentDetailMessageId={openCommunityCommentDetailMessageId}
                 topicHeaderAction={topicHeaderAction}
                 onTopicHeaderActionHandled={handleTopicHeaderActionHandled}
+                commentDetailHeaderAction={commentDetailHeaderAction}
+                onCommentDetailHeaderActionHandled={handleCommentDetailHeaderActionHandled}
+                onCommentDetailStateChange={setCommunityDetailState}
                 forcedUnbookmarkMessageIds={forcedUnbookmarkMessageIds}
                 onCommunitySummaryChange={(summary) => {
                   if (!summary.groupID) return;

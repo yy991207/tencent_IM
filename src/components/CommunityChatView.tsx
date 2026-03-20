@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ConversationList, ConversationPreview, useLoginState } from '@tencentcloud/chat-uikit-react';
+import { ConversationList, ConversationPreview, useLoginState, useConversationListState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark, FiSend } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch, FiMoreHorizontal, FiMapPin, FiChevronsUp, FiGlobe, FiXCircle, FiCornerUpLeft, FiEdit2, FiCheckSquare } from 'react-icons/fi';
@@ -56,6 +56,13 @@ interface CommunityChatViewProps {
     preview: string;
     time: Date;
   } | null, messageId?: string, source?: 'sync' | 'toggle') => void;
+  commentDetailHeaderAction?: {
+    type: 'share' | 'bookmark' | 'close';
+    messageId: string;
+    nonce: number;
+  } | null;
+  onCommentDetailHeaderActionHandled?: (nonce: number) => void;
+  onCommentDetailStateChange?: (detail: { messageId: string | null; bookmarked: boolean }) => void;
 }
 
 
@@ -164,8 +171,12 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   forcedUnbookmarkMessageIds = [],
   onCommunitySummaryChange,
   onTopicBookmarkChange,
+  commentDetailHeaderAction,
+  onCommentDetailHeaderActionHandled,
+  onCommentDetailStateChange,
 }) => {
   const { loginUserInfo } = useLoginState();
+  const { activeConversation, setActiveConversation } = useConversationListState();
 
   const [showMessageInput, setShowMessageInput] = useState(false);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -179,6 +190,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareMessageId, setShareMessageId] = useState<string | null>(null);
   const [shareSearchValue, setShareSearchValue] = useState('');
+  const [shareSubmittingConversationId, setShareSubmittingConversationId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'subscribed'>('all');
   const [groupProfile, setGroupProfile] = useState<any>(null);
   const [robotCount, setRobotCount] = useState(0);
@@ -186,6 +198,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
   const [memberSearchValue, setMemberSearchValue] = useState('');
   const [moreMenuMessageId, setMoreMenuMessageId] = useState<string | null>(null);
+  const shareSourceConversationRef = useRef<string | null>(null);
 
   const currentUserId = loginUserInfo?.userId || '';
 
@@ -447,6 +460,45 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setActiveCommentMessageId(openCommentDetailMessageId);
     setCommentDraft('');
   }, [openCommentDetailMessageId]);
+
+  useEffect(() => {
+    if (!commentDetailHeaderAction?.messageId) return;
+
+    onCommentDetailHeaderActionHandled?.(commentDetailHeaderAction.nonce);
+    const targetMessageId = commentDetailHeaderAction.messageId;
+
+    if (commentDetailHeaderAction.type === 'close') {
+      if (commentDetailMessageId === targetMessageId) {
+        setCommentDetailMessageId(null);
+        setActiveCommentMessageId(null);
+        setCommentDraft('');
+      }
+      return;
+    }
+
+    if (commentDetailMessageId !== targetMessageId) return;
+
+    if (commentDetailHeaderAction.type === 'share') {
+      handleShare(targetMessageId);
+      return;
+    }
+
+    if (commentDetailHeaderAction.type === 'bookmark') {
+      handleBookmark(targetMessageId);
+    }
+  }, [commentDetailHeaderAction, commentDetailMessageId]);
+
+  useEffect(() => {
+    if (!onCommentDetailStateChange) return;
+    if (!commentDetailMessageId) {
+      onCommentDetailStateChange({ messageId: null, bookmarked: false });
+      return;
+    }
+
+    const msg = posts.find((post) => post.id === commentDetailMessageId);
+    const isBookmarked = !!msg && (bookmarkedIds.has(msg.id) || !!msg.bookmarked);
+    onCommentDetailStateChange({ messageId: commentDetailMessageId, bookmarked: isBookmarked });
+  }, [commentDetailMessageId, posts, bookmarkedIds, onCommentDetailStateChange]);
 
   useEffect(() => {
     if (!groupID) return;
@@ -788,6 +840,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
   // 处理转发
   const handleShare = (messageId: string) => {
+    // 记录“发起分享时”的当前会话，后续用于兜底恢复，避免点击转发目标后主会话被切走。
+    shareSourceConversationRef.current = activeConversation || (groupID ? `GROUP${groupID}` : null);
     setShareMessageId(messageId);
     setShareSearchValue('');
     setIsShareModalOpen(true);
@@ -797,10 +851,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setIsShareModalOpen(false);
     setShareMessageId(null);
     setShareSearchValue('');
+    setShareSubmittingConversationId(null);
   };
 
   const handleSelectShareTarget = async (conversation: any) => {
     const convID = conversation?.conversationID;
+    if (!convID) return;
+    if (shareSubmittingConversationId === convID) return;
+
     const name =
       conversation?.groupProfile?.name ||
       conversation?.userProfile?.nick ||
@@ -808,30 +866,55 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
       convID ||
       '未知会话';
 
-    if (shareMessageId && convID) {
+    if (shareMessageId) {
       const post = posts.find((p) => p.id === shareMessageId);
       if (post) {
+        setShareSubmittingConversationId(convID);
         try {
           await sdkForwardPost(convID, groupName, post.content);
           alert(`消息已转发给 "${name}"`);
         } catch (err) {
           console.error('[Community] Forward failed:', err);
           alert('转发失败');
+        } finally {
+          setShareSubmittingConversationId(null);
         }
       }
     }
+
     handleCloseShareModal();
+
+    const sourceConversation = shareSourceConversationRef.current || (groupID ? `GROUP${groupID}` : null);
+    if (sourceConversation) {
+      // 说明：部分 UI 组件会在点击转发目标时同步切换 activeConversation；
+      // 这里在本轮点击结束后恢复源会话，确保页面停留在当前社群/详情上下文。
+      setTimeout(() => setActiveConversation(sourceConversation), 0);
+    }
+    shareSourceConversationRef.current = null;
   };
 
   const ShareConversationPreview: React.FC<ConversationPreviewProps> = (props) => {
     const { conversation } = props;
+    const convID = conversation?.conversationID || '';
+    const isSubmitting = !!convID && shareSubmittingConversationId === convID;
     return (
       <div
-        className="share-conversation-item"
-        onClick={() => handleSelectShareTarget(conversation)}
-        style={{ cursor: 'pointer' }}
+        className={`share-conversation-item ${isSubmitting ? 'is-submitting' : ''}`}
+        onMouseDown={(e) => {
+          // 阻断父级会话列表的按下事件，避免切换主会话。
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isSubmitting) return;
+          void handleSelectShareTarget(conversation);
+        }}
+        style={{ cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
+        aria-disabled={isSubmitting}
       >
-        <ConversationPreview {...props} />
+        <div className="share-conversation-preview">
+          <ConversationPreview {...props} />
+        </div>
       </div>
     );
   };
@@ -2297,6 +2380,33 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         .share-modal-body {
           flex: 1;
           overflow: auto;
+        }
+
+        .share-conversation-item {
+          position: relative;
+          border-radius: 10px;
+          margin: 2px 8px;
+          transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .share-conversation-item:hover {
+          background: #f5f8ff;
+          box-shadow: 0 6px 16px rgba(22, 119, 255, 0.14), inset 0 0 0 1px #b7d3ff;
+          transform: translateY(-1px);
+        }
+
+        .share-conversation-item:active {
+          background: #eaf2ff;
+          transform: translateY(0);
+        }
+
+        .share-conversation-item.is-submitting {
+          background: #f0f5ff;
+          box-shadow: 0 8px 18px rgba(22, 119, 255, 0.2), inset 0 0 0 1px #91caff;
+        }
+
+        .share-conversation-preview {
+          pointer-events: none;
         }
 
         /* 消息互动区域 */
