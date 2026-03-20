@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ConversationList, ConversationPreview, useLoginState, useConversationListState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
-import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark, FiSend } from 'react-icons/fi';
+import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark, FiSend, FiChevronRight, FiPlusCircle } from 'react-icons/fi';
 import { FiUser, FiUsers, FiX, FiPlus, FiArrowLeft, FiCpu, FiInfo, FiSearch, FiMoreHorizontal, FiMapPin, FiChevronsUp, FiGlobe, FiXCircle, FiCornerUpLeft, FiEdit2, FiCheckSquare } from 'react-icons/fi';
 import { MdPreview } from 'md-editor-rt';
 import 'md-editor-rt/lib/style.css';
@@ -192,6 +192,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [shareSearchValue, setShareSearchValue] = useState('');
   const [isShareSearchActive, setIsShareSearchActive] = useState(false);
   const [shareSubmittingConversationId, setShareSubmittingConversationId] = useState<string | null>(null);
+  const [shareComment, setShareComment] = useState('');
+  const [shareSelectedConversation, setShareSelectedConversation] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'subscribed'>('all');
   const [groupProfile, setGroupProfile] = useState<any>(null);
   const [robotCount, setRobotCount] = useState(0);
@@ -849,6 +851,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setShareMessageId(messageId);
     setShareSearchValue('');
     setIsShareSearchActive(true);
+    setShareComment('');
+    setShareSelectedConversation(null);
     setIsShareModalOpen(true);
     requestAnimationFrame(() => {
       shareSearchInputRef.current?.focus();
@@ -861,6 +865,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setShareSearchValue('');
     setIsShareSearchActive(false);
     setShareSubmittingConversationId(null);
+    setShareComment('');
+    setShareSelectedConversation(null);
   };
 
   const activateShareSearch = () => {
@@ -910,43 +916,45 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     });
   };
 
-  const handleSelectShareTarget = async (conversation: any) => {
-    const convID = conversation?.conversationID;
-    if (!convID) return;
-    if (shareSubmittingConversationId === convID) return;
+  const handleSelectShareTarget = (conversation: any) => {
+    setShareSelectedConversation(conversation);
+    setIsShareSearchActive(false);
+  };
+
+  const handleFinalForward = async () => {
+    if (!shareSelectedConversation || !shareMessageId) return;
+    const convID = shareSelectedConversation.conversationID;
+    const post = posts.find((p) => p.id === shareMessageId);
+    if (!post) return;
 
     const name =
-      conversation?.groupProfile?.name ||
-      conversation?.userProfile?.nick ||
-      conversation?.userProfile?.userID ||
+      shareSelectedConversation?.groupProfile?.name ||
+      shareSelectedConversation?.userProfile?.nick ||
+      shareSelectedConversation?.userProfile?.userID ||
       convID ||
       '未知会话';
 
-    if (shareMessageId) {
-      const post = posts.find((p) => p.id === shareMessageId);
-      if (post) {
-        setShareSubmittingConversationId(convID);
-        try {
-          await sdkForwardPost(convID, groupName, post.content);
-          alert(`消息已转发给 "${name}"`);
-        } catch (err) {
-          console.error('[Community] Forward failed:', err);
-          alert('转发失败');
-        } finally {
-          setShareSubmittingConversationId(null);
-        }
+    setShareSubmittingConversationId(convID);
+    try {
+      let content = post.content;
+      if (shareComment.trim()) {
+        content = `[留言] ${shareComment.trim()}\n\n${content}`;
       }
-    }
+      await sdkForwardPost(convID, groupName, content);
+      alert(`消息已转发给 "${name}"`);
+    } catch (err) {
+      console.error('[Community] Forward failed:', err);
+      alert('转发失败');
+    } finally {
+      setShareSubmittingConversationId(null);
+      handleCloseShareModal();
 
-    handleCloseShareModal();
-
-    const sourceConversation = shareSourceConversationRef.current || (groupID ? `GROUP${groupID}` : null);
-    if (sourceConversation) {
-      // 说明：部分 UI 组件会在点击转发目标时同步切换 activeConversation；
-      // 这里在本轮点击结束后恢复源会话，确保页面停留在当前社群/详情上下文。
-      setTimeout(() => setActiveConversation(sourceConversation), 0);
+      const sourceConversation = shareSourceConversationRef.current || (groupID ? `GROUP${groupID}` : null);
+      if (sourceConversation) {
+        setTimeout(() => setActiveConversation(sourceConversation), 0);
+      }
+      shareSourceConversationRef.current = null;
     }
-    shareSourceConversationRef.current = null;
   };
 
   const ShareConversationPreview: React.FC<ConversationPreviewProps> = (props) => {
@@ -963,7 +971,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         onClick={(e) => {
           e.stopPropagation();
           if (isSubmitting) return;
-          void handleSelectShareTarget(conversation);
+          handleSelectShareTarget(conversation);
         }}
         style={{ cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
         aria-disabled={isSubmitting}
@@ -1181,37 +1189,72 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           <div className="share-modal">
             <div className="share-modal-header">
               <div className="share-modal-title">转发</div>
-              <button className="share-modal-close" onClick={handleCloseShareModal} type="button">
-                <FiX />
+              <button className="share-modal-create" type="button">
+                <FiPlusCircle className="create-icon" />
+                <span>创建群组并转发</span>
               </button>
             </div>
 
-            <div className="share-modal-search-region" ref={shareSearchRegionRef}>
-              <div
-                className={`share-modal-search ${isShareSearchActive ? 'is-active' : ''}`}
-                onClick={activateShareSearch}
-              >
-                <input
-                  ref={shareSearchInputRef}
-                  className="share-modal-search-input"
-                  value={shareSearchValue}
-                  readOnly={!isShareSearchActive}
-                  onChange={(e) => setShareSearchValue(e.target.value)}
-                  onFocus={activateShareSearch}
-                  placeholder="搜索"
-                />
-              </div>
-
-              {isShareSearchActive && (
-                <div className="share-modal-dropdown" ref={shareDropdownRef}>
-                  <ConversationList
-                    enableSearch={false}
-                    enableCreate={false}
-                    filter={filterShareConversations}
-                    Preview={(props: ConversationPreviewProps) => <ShareConversationPreview {...props} />}
+            <div className="share-modal-body">
+              <div className="share-modal-search-region" ref={shareSearchRegionRef}>
+                <div
+                  className={`share-modal-search ${isShareSearchActive ? 'is-active' : ''}`}
+                  onClick={activateShareSearch}
+                >
+                  <FiSearch className="search-icon" />
+                  <input
+                    ref={shareSearchInputRef}
+                    className="share-modal-search-input"
+                    value={shareSearchValue}
+                    readOnly={!isShareSearchActive}
+                    onChange={(e) => setShareSearchValue(e.target.value)}
+                    onFocus={activateShareSearch}
+                    placeholder="搜索"
                   />
                 </div>
+
+                {isShareSearchActive && (
+                  <div className="share-modal-dropdown" ref={shareDropdownRef}>
+                    <ConversationList
+                      enableSearch={false}
+                      enableCreate={false}
+                      filter={filterShareConversations}
+                      Preview={(props: ConversationPreviewProps) => <ShareConversationPreview {...props} />}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {shareSelectedConversation && (
+                <div className="share-selected-item" onClick={activateShareSearch}>
+                  <div className="selected-item-info">
+                    {shareSelectedConversation.groupProfile?.name || 
+                     shareSelectedConversation.userProfile?.nick || 
+                     shareSelectedConversation.conversationID}
+                  </div>
+                  <FiChevronRight className="chevron-icon" />
+                </div>
               )}
+
+              <div className="share-comment-region">
+                <textarea
+                  className="share-comment-textarea"
+                  value={shareComment}
+                  onChange={(e) => setShareComment(e.target.value)}
+                  placeholder="留言 (可@成员)"
+                />
+              </div>
+            </div>
+
+            <div className="share-modal-footer">
+              <button className="share-btn-cancel" onClick={handleCloseShareModal}>取消</button>
+              <button 
+                className={`share-btn-send ${(!shareSelectedConversation || shareSubmittingConversationId) ? 'is-disabled' : ''}`}
+                onClick={handleFinalForward}
+                disabled={!shareSelectedConversation || !!shareSubmittingConversationId}
+              >
+                {shareSubmittingConversationId ? '发送中...' : '发送 (⌘+Enter)'}
+              </button>
             </div>
           </div>
         </div>
@@ -2376,28 +2419,23 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         }
 
         .share-modal-overlay {
-          position: absolute;
+          position: fixed;
           left: 0;
           top: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.16);
+          background: rgba(0, 0, 0, 0.45);
           display: flex;
-          align-items: flex-start;
+          align-items: center;
           justify-content: center;
-          padding-top: 20px;
-          padding-bottom: 20px;
-          box-sizing: border-box;
-          z-index: 14;
+          z-index: 1000;
         }
 
         .share-modal {
-          width: 520px;
-          max-width: calc(100% - 32px);
-          min-height: 132px;
+          width: 480px;
           background: #fff;
           border-radius: 12px;
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+          box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
           display: flex;
           flex-direction: column;
           position: relative;
@@ -2408,69 +2446,88 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 14px 16px;
-          border-bottom: 1px solid #f0f0f0;
+          padding: 16px 20px;
           flex-shrink: 0;
         }
 
         .share-modal-title {
           font-size: 16px;
           font-weight: 600;
-          color: #333;
+          color: #1f1f1f;
         }
 
-        .share-modal-close {
+        .share-modal-create {
+          display: flex;
+          align-items: center;
+          gap: 6px;
           background: none;
           border: none;
           cursor: pointer;
-          color: #666;
+          color: #1f1f1f;
+          font-size: 14px;
           padding: 4px;
+        }
+
+        .share-modal-create:hover {
+          opacity: 0.8;
+        }
+
+        .create-icon {
+          font-size: 16px;
+        }
+
+        .share-modal-body {
+          padding: 0 20px;
           display: flex;
-          align-items: center;
-          justify-content: center;
+          flex-direction: column;
+          gap: 12px;
         }
 
         .share-modal-search-region {
           position: relative;
-          padding: 12px 16px 16px;
-          flex-shrink: 0;
         }
 
         .share-modal-search {
-          cursor: text;
+          display: flex;
+          align-items: center;
+          background: #fff;
+          border: 1px solid #d9d9d9;
+          border-radius: 8px;
+          padding: 0 12px;
+          transition: border-color 0.2s;
+        }
+
+        .share-modal-search.is-active {
+          border-color: #1890ff;
+          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+        }
+
+        .search-icon {
+          color: #8c8c8c;
+          margin-right: 8px;
         }
 
         .share-modal-search-input {
-          width: 100%;
+          flex: 1;
           height: 36px;
-          border-radius: 8px;
-          border: 1px solid rgba(0, 0, 0, 0.08);
-          padding: 0 12px;
-          box-sizing: border-box;
-          font-size: 13px;
+          border: none;
           outline: none;
-          cursor: text;
-        }
-
-        .share-modal-search:hover .share-modal-search-input,
-        .share-modal-search.is-active .share-modal-search-input,
-        .share-modal-search-input:focus {
-          border-color: #1890ff;
-          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.16);
+          font-size: 14px;
+          background: transparent;
         }
 
         .share-modal-dropdown {
           position: absolute;
-          left: 16px;
-          right: 16px;
-          top: calc(100% - 2px);
-          height: 360px;
+          left: 0;
+          right: 0;
+          top: calc(100% + 4px);
+          height: 300px;
           background: #fff;
-          border-radius: 12px;
-          box-shadow: 0 18px 42px rgba(0, 0, 0, 0.2);
-          border: 1px solid rgba(24, 144, 255, 0.12);
+          border-radius: 8px;
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+          border: 1px solid #f0f0f0;
           overflow: hidden;
-          z-index: 24;
+          z-index: 1100;
         }
 
         .share-modal-dropdown .uikit-conversationList {
@@ -2482,39 +2539,100 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           height: 100%;
           overflow-y: auto !important;
           overflow-x: hidden;
-          scrollbar-width: thin;
         }
 
-        .share-modal-dropdown .uikit-conversationListContent::-webkit-scrollbar {
-          width: 6px;
+        .share-selected-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 12px;
+          background: #fff;
+          border: 1px solid #d9d9d9;
+          border-radius: 8px;
+          cursor: pointer;
         }
 
-        .share-modal-dropdown .uikit-conversationListContent::-webkit-scrollbar-thumb {
-          background: rgba(0, 0, 0, 0.18);
-          border-radius: 999px;
+        .selected-item-info {
+          font-size: 14px;
+          color: #1f1f1f;
+        }
+
+        .chevron-icon {
+          color: #bfbfbf;
+        }
+
+        .share-comment-region {
+          border: 1px solid #d9d9d9;
+          border-radius: 8px;
+          padding: 4px;
+        }
+
+        .share-comment-textarea {
+          width: 100%;
+          height: 120px;
+          padding: 8px;
+          border: none;
+          outline: none;
+          resize: none;
+          font-size: 14px;
+          font-family: inherit;
+        }
+
+        .share-modal-footer {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          padding: 20px;
+        }
+
+        .share-btn-cancel {
+          height: 32px;
+          padding: 4px 15px;
+          border-radius: 6px;
+          border: 1px solid #d9d9d9;
+          background: #fff;
+          color: rgba(0, 0, 0, 0.88);
+          font-size: 14px;
+          cursor: pointer;
+        }
+
+        .share-btn-cancel:hover {
+          color: #40a9ff;
+          border-color: #40a9ff;
+        }
+
+        .share-btn-send {
+          height: 32px;
+          padding: 4px 15px;
+          border-radius: 6px;
+          border: 1px solid #1890ff;
+          background: #1890ff;
+          color: #fff;
+          font-size: 14px;
+          cursor: pointer;
+        }
+
+        .share-btn-send:hover {
+          background: #40a9ff;
+          border-color: #40a9ff;
+        }
+
+        .share-btn-send.is-disabled {
+          background: #f5f5f5;
+          border-color: #d9d9d9;
+          color: rgba(0, 0, 0, 0.25);
+          cursor: not-allowed;
         }
 
         .share-conversation-item {
           position: relative;
-          border-radius: 10px;
-          margin: 2px 8px;
-          transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+          border-radius: 8px;
+          margin: 4px 8px;
+          transition: background-color 0.2s;
         }
 
         .share-conversation-item:hover {
-          background: #f5f8ff;
-          box-shadow: 0 6px 16px rgba(22, 119, 255, 0.14), inset 0 0 0 1px #b7d3ff;
-          transform: translateY(-1px);
-        }
-
-        .share-conversation-item:active {
-          background: #eaf2ff;
-          transform: translateY(0);
-        }
-
-        .share-conversation-item.is-submitting {
-          background: #f0f5ff;
-          box-shadow: 0 8px 18px rgba(22, 119, 255, 0.2), inset 0 0 0 1px #91caff;
+          background: #f5f5f5;
         }
 
         .share-conversation-preview {
