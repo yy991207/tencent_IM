@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { ConversationList, ConversationPreview, useLoginState, useConversationListState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark, FiSend } from 'react-icons/fi';
@@ -193,7 +192,6 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [shareSearchValue, setShareSearchValue] = useState('');
   const [isShareSearchActive, setIsShareSearchActive] = useState(false);
   const [shareSubmittingConversationId, setShareSubmittingConversationId] = useState<string | null>(null);
-  const [shareDropdownStyle, setShareDropdownStyle] = useState<React.CSSProperties | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'subscribed'>('all');
   const [groupProfile, setGroupProfile] = useState<any>(null);
   const [robotCount, setRobotCount] = useState(0);
@@ -885,48 +883,6 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     return () => document.removeEventListener('mousedown', handlePointerDownOutside);
   }, [isShareModalOpen, isShareSearchActive]);
 
-  useEffect(() => {
-    if (!isShareModalOpen || !isShareSearchActive) {
-      setShareDropdownStyle(null);
-      return;
-    }
-
-    const updateShareDropdownPosition = () => {
-      const inputRect = shareSearchInputRef.current?.getBoundingClientRect();
-      if (!inputRect) return;
-
-      const desiredHeight = 360;
-      const minHeight = 180;
-      const gap = 8;
-      const viewportPadding = 16;
-      const spaceBelow = window.innerHeight - inputRect.bottom - viewportPadding;
-      const spaceAbove = inputRect.top - viewportPadding;
-      const openBelow = spaceBelow >= minHeight || spaceBelow >= spaceAbove;
-      const height = Math.max(minHeight, Math.min(desiredHeight, openBelow ? spaceBelow - gap : spaceAbove - gap));
-      const top = openBelow
-        ? inputRect.bottom + gap
-        : Math.max(viewportPadding, inputRect.top - height - gap);
-
-      setShareDropdownStyle({
-        position: 'fixed',
-        top,
-        left: inputRect.left,
-        width: inputRect.width,
-        height,
-        zIndex: 100001,
-      });
-    };
-
-    updateShareDropdownPosition();
-    window.addEventListener('resize', updateShareDropdownPosition);
-    window.addEventListener('scroll', updateShareDropdownPosition, true);
-
-    return () => {
-      window.removeEventListener('resize', updateShareDropdownPosition);
-      window.removeEventListener('scroll', updateShareDropdownPosition, true);
-    };
-  }, [isShareModalOpen, isShareSearchActive]);
-
   const filterShareConversations = (conversationList: any[]) => {
     if (!Array.isArray(conversationList)) return [];
     const keyword = shareSearchValue.trim().toLowerCase();
@@ -1243,21 +1199,19 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                 />
               </div>
 
+              {isShareSearchActive && (
+                <div className="share-modal-dropdown" ref={shareDropdownRef}>
+                  <ConversationList
+                    enableSearch={false}
+                    enableCreate={false}
+                    filter={filterShareConversations}
+                    Preview={(props: ConversationPreviewProps) => <ShareConversationPreview {...props} />}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
-      )}
-
-      {isShareModalOpen && isShareSearchActive && shareDropdownStyle && typeof document !== 'undefined' && createPortal(
-        <div className="share-modal-dropdown" style={shareDropdownStyle} ref={shareDropdownRef}>
-          <ConversationList
-            enableSearch={false}
-            enableCreate={false}
-            filter={filterShareConversations}
-            Preview={(props: ConversationPreviewProps) => <ShareConversationPreview {...props} />}
-          />
-        </div>,
-        document.body,
       )}
 
       {/* 消息列表区域 */}
@@ -2428,7 +2382,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: flex-start;
           justify-content: center;
-          padding-top: 28px;
+          padding-top: 20px;
           padding-bottom: 20px;
           box-sizing: border-box;
           z-index: 14;
@@ -2503,11 +2457,17 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         }
 
         .share-modal-dropdown {
+          position: absolute;
+          left: 16px;
+          right: 16px;
+          top: calc(100% - 2px);
+          height: 360px;
           background: #fff;
           border-radius: 12px;
           box-shadow: 0 18px 42px rgba(0, 0, 0, 0.2);
           border: 1px solid rgba(24, 144, 255, 0.12);
           overflow: hidden;
+          z-index: 24;
         }
 
         .share-modal-dropdown .uikit-conversationList {
