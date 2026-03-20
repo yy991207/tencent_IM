@@ -194,6 +194,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [shareSubmittingConversationId, setShareSubmittingConversationId] = useState<string | null>(null);
   const [shareComment, setShareComment] = useState('');
   const [shareSelectedConversation, setShareSelectedConversation] = useState<any>(null);
+  const [isAtMentionOpen, setIsAtMentionOpen] = useState(false);
+  const shareCommentRef = useRef<HTMLTextAreaElement | null>(null);
+  const atMentionDropdownRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'subscribed'>('all');
   const [groupProfile, setGroupProfile] = useState<any>(null);
   const [robotCount, setRobotCount] = useState(0);
@@ -921,6 +924,49 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setIsShareSearchActive(false);
   };
 
+  const handleShareCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const lastChar = value[value.length - 1];
+    setShareComment(value);
+
+    if (lastChar === '@') {
+      setIsAtMentionOpen(true);
+    } else if (isAtMentionOpen && !value.includes('@')) {
+      setIsAtMentionOpen(false);
+    }
+  };
+
+  const handleSelectAtUser = (conversation: any) => {
+    const name =
+      conversation?.groupProfile?.name ||
+      conversation?.userProfile?.nick ||
+      conversation?.userProfile?.userID ||
+      '未知';
+    
+    // 简单的替换逻辑：将最后的 @ 替换为 @name 
+    setShareComment((prev) => {
+      const lastAtIndex = prev.lastIndexOf('@');
+      if (lastAtIndex === -1) return prev + name + ' ';
+      return prev.slice(0, lastAtIndex + 1) + name + ' ';
+    });
+    setIsAtMentionOpen(false);
+    shareCommentRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!isAtMentionOpen) return;
+
+    const handlePointerDownOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (atMentionDropdownRef.current?.contains(target)) return;
+      setIsAtMentionOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDownOutside);
+    return () => document.removeEventListener('mousedown', handlePointerDownOutside);
+  }, [isAtMentionOpen]);
+
   const handleFinalForward = async () => {
     if (!shareSelectedConversation || !shareMessageId) return;
     const convID = shareSelectedConversation.conversationID;
@@ -1237,10 +1283,34 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
               )}
 
               <div className="share-comment-region">
+                {isAtMentionOpen && (
+                  <div className="at-mention-dropdown" ref={atMentionDropdownRef}>
+                    <div className="at-mention-title">选择提醒的人</div>
+                    <div className="at-mention-list">
+                      <ConversationList
+                        enableSearch={false}
+                        enableCreate={false}
+                        filter={filterShareConversations}
+                        Preview={(props: ConversationPreviewProps) => (
+                          <div 
+                            className="at-mention-item" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectAtUser(props.conversation);
+                            }}
+                          >
+                            <ConversationPreview {...props} />
+                          </div>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
                 <textarea
+                  ref={shareCommentRef}
                   className="share-comment-textarea"
                   value={shareComment}
-                  onChange={(e) => setShareComment(e.target.value)}
+                  onChange={handleShareCommentChange}
                   placeholder="留言 (可@成员)"
                 />
               </div>
@@ -2565,6 +2635,48 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           border: 1px solid #d9d9d9;
           border-radius: 8px;
           padding: 4px;
+          position: relative;
+        }
+
+        .at-mention-dropdown {
+          position: absolute;
+          bottom: calc(100% + 8px);
+          left: 0;
+          right: 0;
+          background: #fff;
+          border-radius: 8px;
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+          border: 1px solid #f0f0f0;
+          z-index: 1200;
+          max-height: 240px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .at-mention-title {
+          padding: 8px 12px;
+          font-size: 12px;
+          color: #8c8c8c;
+          border-bottom: 1px solid #f0f0f0;
+        }
+
+        .at-mention-list {
+          flex: 1;
+          overflow-y: auto;
+        }
+
+        .at-mention-item {
+          cursor: pointer;
+          transition: background 0.2s;
+          padding: 0 4px;
+        }
+
+        .at-mention-item:hover {
+          background: #f5f5f5;
+        }
+
+        .at-mention-item .uikit-conversation-preview-content {
+          border: none !important;
         }
 
         .share-comment-textarea {
