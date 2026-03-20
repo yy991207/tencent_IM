@@ -2382,6 +2382,11 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           overflow: auto;
         }
 
+        /* 仅在转发弹窗里隐藏会话列表自带的“搜索 + 新建”头部，避免与上方搜索栏重复。 */
+        .share-modal .uikit-conversationListHeader {
+          display: none !important;
+        }
+
         .share-conversation-item {
           position: relative;
           border-radius: 10px;
