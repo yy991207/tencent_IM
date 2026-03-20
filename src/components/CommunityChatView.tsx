@@ -848,8 +848,11 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     shareSourceConversationRef.current = activeConversation || (groupID ? `GROUP${groupID}` : null);
     setShareMessageId(messageId);
     setShareSearchValue('');
-    setIsShareSearchActive(false);
+    setIsShareSearchActive(true);
     setIsShareModalOpen(true);
+    requestAnimationFrame(() => {
+      shareSearchInputRef.current?.focus();
+    });
   };
 
   const handleCloseShareModal = () => {
