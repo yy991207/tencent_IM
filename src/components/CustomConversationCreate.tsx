@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { IconAdd, IconClose, IconSearch, IconUsergroup } from '@tencentcloud/uikit-base-component-react';
 import { useContactListState, useConversationListState, useLoginState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationCreateProps } from '@tencentcloud/chat-uikit-react';
@@ -40,6 +41,7 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
   const [submitting, setSubmitting] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState<string>('');
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
 
   // 当切换群类型时，更新默认头像
   useEffect(() => {
@@ -50,6 +52,11 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
   useEffect(() => {
     onChangeCreateModelVisible?.(open);
   }, [open, onChangeCreateModelVisible]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    setPortalRoot(document.body);
+  }, []);
 
   const reset = () => {
     setGroupTypeKey('Work');
@@ -146,7 +153,7 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
         <IconAdd size="16px" />
       </button>
 
-      {open && (
+      {open && portalRoot && createPortal((
         <div className="custom-create-overlay" role="dialog" aria-modal="true">
           <div className="custom-create-modal">
             <div className="custom-create-header">
@@ -325,7 +332,7 @@ export default function CustomConversationCreate(props: ConversationCreateProps)
             </div>
           </div>
         </div>
-      )}
+      ), portalRoot)}
     </div>
   );
 }

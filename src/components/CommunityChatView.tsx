@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { ConversationList, ConversationPreview, useLoginState, useConversationListState } from '@tencentcloud/chat-uikit-react';
 import type { ConversationPreviewProps } from '@tencentcloud/chat-uikit-react';
 import { FiThumbsUp, FiMessageSquare, FiShare2, FiBookmark, FiSend } from 'react-icons/fi';
@@ -190,7 +191,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareMessageId, setShareMessageId] = useState<string | null>(null);
   const [shareSearchValue, setShareSearchValue] = useState('');
+  const [isShareSearchActive, setIsShareSearchActive] = useState(false);
   const [shareSubmittingConversationId, setShareSubmittingConversationId] = useState<string | null>(null);
+  const [shareDropdownStyle, setShareDropdownStyle] = useState<React.CSSProperties | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'subscribed'>('all');
   const [groupProfile, setGroupProfile] = useState<any>(null);
   const [robotCount, setRobotCount] = useState(0);
@@ -199,6 +202,9 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
   const [memberSearchValue, setMemberSearchValue] = useState('');
   const [moreMenuMessageId, setMoreMenuMessageId] = useState<string | null>(null);
   const shareSourceConversationRef = useRef<string | null>(null);
+  const shareSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const shareSearchRegionRef = useRef<HTMLDivElement | null>(null);
+  const shareDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const currentUserId = loginUserInfo?.userId || '';
 
@@ -844,6 +850,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     shareSourceConversationRef.current = activeConversation || (groupID ? `GROUP${groupID}` : null);
     setShareMessageId(messageId);
     setShareSearchValue('');
+    setIsShareSearchActive(false);
     setIsShareModalOpen(true);
   };
 
@@ -851,7 +858,97 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     setIsShareModalOpen(false);
     setShareMessageId(null);
     setShareSearchValue('');
+    setIsShareSearchActive(false);
     setShareSubmittingConversationId(null);
+  };
+
+  const activateShareSearch = () => {
+    setIsShareSearchActive(true);
+    // 确保点击后立刻进入可输入状态
+    requestAnimationFrame(() => {
+      shareSearchInputRef.current?.focus();
+    });
+  };
+
+  useEffect(() => {
+    if (!isShareModalOpen || !isShareSearchActive) return;
+
+    const handlePointerDownOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (shareSearchRegionRef.current?.contains(target)) return;
+      if (shareDropdownRef.current?.contains(target)) return;
+      setIsShareSearchActive(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDownOutside);
+    return () => document.removeEventListener('mousedown', handlePointerDownOutside);
+  }, [isShareModalOpen, isShareSearchActive]);
+
+  useEffect(() => {
+    if (!isShareModalOpen || !isShareSearchActive) {
+      setShareDropdownStyle(null);
+      return;
+    }
+
+    const updateShareDropdownPosition = () => {
+      const inputRect = shareSearchInputRef.current?.getBoundingClientRect();
+      if (!inputRect) return;
+
+      const desiredHeight = 360;
+      const minHeight = 180;
+      const gap = 8;
+      const viewportPadding = 16;
+      const spaceBelow = window.innerHeight - inputRect.bottom - viewportPadding;
+      const spaceAbove = inputRect.top - viewportPadding;
+      const openBelow = spaceBelow >= minHeight || spaceBelow >= spaceAbove;
+      const height = Math.max(minHeight, Math.min(desiredHeight, openBelow ? spaceBelow - gap : spaceAbove - gap));
+      const top = openBelow
+        ? inputRect.bottom + gap
+        : Math.max(viewportPadding, inputRect.top - height - gap);
+
+      setShareDropdownStyle({
+        position: 'fixed',
+        top,
+        left: inputRect.left,
+        width: inputRect.width,
+        height,
+        zIndex: 100001,
+      });
+    };
+
+    updateShareDropdownPosition();
+    window.addEventListener('resize', updateShareDropdownPosition);
+    window.addEventListener('scroll', updateShareDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updateShareDropdownPosition);
+      window.removeEventListener('scroll', updateShareDropdownPosition, true);
+    };
+  }, [isShareModalOpen, isShareSearchActive]);
+
+  const filterShareConversations = (conversationList: any[]) => {
+    if (!Array.isArray(conversationList)) return [];
+    const keyword = shareSearchValue.trim().toLowerCase();
+    if (!keyword) return conversationList;
+
+    return conversationList.filter((conversation: any) => {
+      const showName = typeof conversation?.getShowName === 'function'
+        ? String(conversation.getShowName() || '')
+        : '';
+      const groupName = String(conversation?.groupProfile?.name || '');
+      const userNick = String(conversation?.userProfile?.nick || '');
+      const userID = String(conversation?.userProfile?.userID || conversation?.userProfile?.userId || '');
+      const conversationID = String(conversation?.conversationID || '');
+      const lastMessageText = String(
+        conversation?.lastMessage?.messageForShow ||
+        conversation?.lastMessage?.payload?.text ||
+        '',
+      );
+
+      const haystack = `${showName} ${groupName} ${userNick} ${userID} ${conversationID} ${lastMessageText}`.toLowerCase();
+      return haystack.includes(keyword);
+    });
   };
 
   const handleSelectShareTarget = async (conversation: any) => {
@@ -1130,20 +1227,37 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
               </button>
             </div>
 
-            <div className="share-modal-search">
-              <input
-                className="share-modal-search-input"
-                value={shareSearchValue}
-                onChange={(e) => setShareSearchValue(e.target.value)}
-                placeholder="搜索"
-              />
-            </div>
+            <div className="share-modal-search-region" ref={shareSearchRegionRef}>
+              <div
+                className={`share-modal-search ${isShareSearchActive ? 'is-active' : ''}`}
+                onClick={activateShareSearch}
+              >
+                <input
+                  ref={shareSearchInputRef}
+                  className="share-modal-search-input"
+                  value={shareSearchValue}
+                  readOnly={!isShareSearchActive}
+                  onChange={(e) => setShareSearchValue(e.target.value)}
+                  onFocus={activateShareSearch}
+                  placeholder="搜索"
+                />
+              </div>
 
-            <div className="share-modal-body">
-              <ConversationList Preview={(props: ConversationPreviewProps) => <ShareConversationPreview {...props} />} />
             </div>
           </div>
         </div>
+      )}
+
+      {isShareModalOpen && isShareSearchActive && shareDropdownStyle && typeof document !== 'undefined' && createPortal(
+        <div className="share-modal-dropdown" style={shareDropdownStyle} ref={shareDropdownRef}>
+          <ConversationList
+            enableSearch={false}
+            enableCreate={false}
+            filter={filterShareConversations}
+            Preview={(props: ConversationPreviewProps) => <ShareConversationPreview {...props} />}
+          />
+        </div>,
+        document.body,
       )}
 
       {/* 消息列表区域 */}
@@ -2173,7 +2287,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: stretch;
           justify-content: center;
-          z-index: 99997;
+          z-index: 12;
         }
 
         .comment-detail-panel {
@@ -2312,22 +2426,25 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           bottom: 0;
           background: rgba(0, 0, 0, 0.16);
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: center;
-          z-index: 99998;
+          padding-top: 28px;
+          padding-bottom: 20px;
+          box-sizing: border-box;
+          z-index: 14;
         }
 
         .share-modal {
           width: 520px;
           max-width: calc(100% - 32px);
-          height: 620px;
-          max-height: calc(100% - 32px);
+          min-height: 132px;
           background: #fff;
           border-radius: 12px;
           box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
           display: flex;
           flex-direction: column;
-          overflow: hidden;
+          position: relative;
+          overflow: visible;
         }
 
         .share-modal-header {
@@ -2356,10 +2473,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           justify-content: center;
         }
 
-        .share-modal-search {
-          padding: 12px 16px;
-          border-bottom: 1px solid #f5f5f5;
+        .share-modal-search-region {
+          position: relative;
+          padding: 12px 16px 16px;
           flex-shrink: 0;
+        }
+
+        .share-modal-search {
+          cursor: text;
         }
 
         .share-modal-search-input {
@@ -2371,20 +2492,43 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           box-sizing: border-box;
           font-size: 13px;
           outline: none;
+          cursor: text;
         }
 
+        .share-modal-search:hover .share-modal-search-input,
+        .share-modal-search.is-active .share-modal-search-input,
         .share-modal-search-input:focus {
           border-color: #1890ff;
+          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.16);
         }
 
-        .share-modal-body {
-          flex: 1;
-          overflow: auto;
+        .share-modal-dropdown {
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 18px 42px rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(24, 144, 255, 0.12);
+          overflow: hidden;
         }
 
-        /* 仅在转发弹窗里隐藏会话列表自带的“搜索 + 新建”头部，避免与上方搜索栏重复。 */
-        .share-modal .uikit-conversationListHeader {
-          display: none !important;
+        .share-modal-dropdown .uikit-conversationList {
+          height: 100%;
+          min-height: 0;
+        }
+
+        .share-modal-dropdown .uikit-conversationListContent {
+          height: 100%;
+          overflow-y: auto !important;
+          overflow-x: hidden;
+          scrollbar-width: thin;
+        }
+
+        .share-modal-dropdown .uikit-conversationListContent::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .share-modal-dropdown .uikit-conversationListContent::-webkit-scrollbar-thumb {
+          background: rgba(0, 0, 0, 0.18);
+          border-radius: 999px;
         }
 
         .share-conversation-item {
@@ -2501,7 +2645,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 99999;
+          z-index: 16;
           animation: fadeIn 0.2s ease-out;
         }
 
@@ -2773,7 +2917,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           right: 0;
           bottom: 0;
           background: rgba(0, 0, 0, 0.1);
-          z-index: 99996;
+          z-index: 11;
           display: flex;
           justify-content: flex-end;
         }
