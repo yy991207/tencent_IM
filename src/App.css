@@ -142,6 +142,56 @@ body {
   background: inherit;
 }
 
+.conversation-list-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 8px 0;
+}
+
+.conversation-list-search-box {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: #f3f5f7;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+  cursor: text;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.conversation-list-search-box:focus-within {
+  background: #fff;
+  border-color: #91caff;
+  box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.12);
+}
+
+.conversation-list-search-icon {
+  flex-shrink: 0;
+  color: #98a2b3;
+}
+
+.conversation-list-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #1f2329;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.conversation-list-search-input::placeholder {
+  color: #98a2b3;
+}
+
 .conversation-list-panel .uikit-conversationListContent {
   flex: 1;
   overflow-y: auto !important;
@@ -313,6 +363,25 @@ body {
 
 .dark .conversation-list-panel {
   border-right: 1px solid var(--uikit-theme-dark-stroke-color-primary);
+}
+
+.dark .conversation-list-search-box {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dark .conversation-list-search-box:focus-within {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(145, 202, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.18);
+}
+
+.dark .conversation-list-search-icon,
+.dark .conversation-list-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.dark .conversation-list-search-input {
+  color: #f3f4f6;
 }
 
 .contact-list {

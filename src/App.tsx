@@ -30,6 +30,10 @@ import React from 'react';
 import { FiShare2, FiBookmark, FiX } from 'react-icons/fi';
 import { emojiBaseUrl, emojiUrlMap } from './utils/tuiEmoji';
 import { loadTopicBookmarkIdsFromConversation } from './utils/communityMessageService';
+import {
+  filterConversationListByKeyword,
+  filterTopicBookmarksByKeyword,
+} from './utils/conversationSearch';
 import './App.css';
 
 function renderTextWithTUIEmoji(text: string): React.ReactNode {
@@ -135,6 +139,8 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   const [openCommunityCommentDetailMessageId, setOpenCommunityCommentDetailMessageId] = useState<string | null>(null);
   const { loginUserInfo } = useLoginState();
   const [topicBookmarks, setTopicBookmarks] = useState<TopicBookmarkItem[]>([]);
+  const [conversationSearchKeyword, setConversationSearchKeyword] = useState('');
+  const conversationSearchKeywordRef = useRef('');
   const [currentTopicBookmark, setCurrentTopicBookmark] = useState<TopicBookmarkItem | null>(null);
   const [topicHeaderAction, setTopicHeaderAction] = useState<{
     type: 'share' | 'bookmark' | 'unbookmark';
@@ -163,6 +169,7 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
   const { language, theme } = useUIKit();
 
   const isDark = theme === 'dark';
+  conversationSearchKeywordRef.current = conversationSearchKeyword;
 
   const texts = useMemo(() => 
     language === 'zh-CN'
@@ -599,6 +606,36 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
     );
   };
 
+  const CustomConversationSearch = useMemo<React.FC>(() => {
+    const StableConversationSearch: React.FC = () => {
+      return (
+        <div className="conversation-list-search">
+          <label className="conversation-list-search-box" aria-label="搜索会话">
+            <IconSearch className="conversation-list-search-icon" size="16px" />
+            <input
+              className="conversation-list-search-input"
+              type="text"
+              value={conversationSearchKeywordRef.current}
+              onChange={(event) => {
+                // 这里需要保持组件类型稳定，否则每次 setState 后搜索框会被重新挂载，焦点会立刻中断。
+                setConversationSearchKeyword(event.target.value);
+              }}
+              placeholder="搜索"
+            />
+          </label>
+        </div>
+      );
+    };
+
+    return StableConversationSearch;
+  }, []);
+
+  const filterConversationList = (conversationList: any[]) => {
+    return filterConversationListByKeyword(conversationList, conversationSearchKeyword);
+  };
+
+  const filteredTopicBookmarks = filterTopicBookmarksByKeyword(topicBookmarks, conversationSearchKeyword);
+
   const CustomConversationListContent: React.FC<any> = (props) => {
     const {
       children,
@@ -612,17 +649,18 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       style,
     } = props;
 
+    const hasVisibleTopicBookmarks = filteredTopicBookmarks.length > 0;
     let content;
     if (error) {
       content = PlaceholderLoadError;
     } else if (loading) {
       content = PlaceholderLoading;
-    } else if (empty) {
+    } else if (empty && !hasVisibleTopicBookmarks) {
       content = PlaceholderEmptyList;
     } else {
       content = (
         <>
-          {topicBookmarks.map((t) => (
+          {filteredTopicBookmarks.map((t) => (
             <div
               key={`${t.groupID || ''}:${t.messageId}`}
               className="topic-bookmark-wrapper"
@@ -761,10 +799,12 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
           <>
             <ConversationList
               List={CustomConversationListContent}
+              ConversationSearch={CustomConversationSearch}
               Preview={(props: ConversationPreviewProps) => (
                 <CustomConversationPreview {...props} />
               )}
               ConversationCreate={CustomConversationCreate as any}
+              filter={filterConversationList}
               onBeforeCreateConversation={(params) => {
               // 在创建群组前，根据群组类型自动生成头像
               // 说明：TUIKit 内置创建群与自定义创建群，参数结构可能不同，这里做兼容兜底。
