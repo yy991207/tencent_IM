@@ -723,8 +723,10 @@ function ChatApp({ config }: { config: RuntimeConfig }) {
       );
     }
 
+    const contentClassName = ['conversation-list-scroll-region', className].filter(Boolean).join(' ');
+
     return (
-      <div className={className} style={style}>
+      <div className={contentClassName} style={style}>
         {content}
       </div>
     );
