@@ -196,7 +196,28 @@ export async function loadCommunityMessages(
     }
 
     if (allMessages.length > 0 || attempt === MAX_RETRIES) {
-      return parseCommunityMessages(allMessages, bookmarkedIds);
+      const posts = parseCommunityMessages(allMessages, bookmarkedIds);
+      // 用群成员资料回填头像（消息历史中 msg.avatar 常为空）
+      try {
+        const res = await chat.getGroupMemberList({ groupID, count: 100, offset: 0 });
+        const members: any[] = res.data?.memberList || [];
+        const avatarMap = new Map<string, string>(
+          members.filter((m) => m.avatar).map((m) => [m.userID, m.avatar]),
+        );
+        for (const post of posts) {
+          if (!post.avatarUrl && avatarMap.has(post.senderID)) {
+            post.avatarUrl = avatarMap.get(post.senderID)!;
+          }
+          for (const c of post.comments) {
+            if (!c.avatarUrl && avatarMap.has(c.senderID)) {
+              c.avatarUrl = avatarMap.get(c.senderID)!;
+            }
+          }
+        }
+      } catch {
+        // 获取成员列表失败不影响主流程
+      }
+      return posts;
     }
 
     // 空结果 —— SDK 可能仍在后台同步，等待后重试
