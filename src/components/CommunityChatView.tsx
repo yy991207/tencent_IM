@@ -137,14 +137,14 @@ const ExpandableContent: React.FC<{ content: string }> = ({ content }) => {
       </div>
       {!isExpanded && shouldShowExpand && (
         <div className="expand-button-wrapper">
-          <button className="expand-button" onClick={() => setIsExpanded(true)}>
+          <button className="expand-button" onClick={(e) => { e.stopPropagation(); setIsExpanded(true); }}>
             展开
           </button>
         </div>
       )}
       {isExpanded && shouldShowExpand && (
         <div className="expand-button-wrapper">
-          <button className="expand-button" onClick={() => setIsExpanded(false)}>
+          <button className="expand-button" onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}>
             收起
           </button>
         </div>
@@ -1398,7 +1398,14 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                   </div>
 
                   {/* 帖子正文：支持 Markdown 格式渲染（如标题、列表、代码块等），支持展开/收起 */}
-                  <div className="message-bubble">
+                  <div
+                    className="message-bubble"
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (target.closest('a') || target.closest('button')) return;
+                      handleOpenCommentDetail(msg.id);
+                    }}
+                  >
                     <ExpandableContent content={msg.content} />
                   </div>
 
@@ -2055,6 +2062,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           word-break: break-word;
           color: #262626;
           margin-bottom: 8px;
+          cursor: pointer;
         }
 
         .expandable-content {
