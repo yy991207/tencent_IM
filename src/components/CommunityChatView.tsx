@@ -1549,9 +1549,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                         style={{ background: 'transparent', padding: 0 }}
                       />
                     </div>
-                    {hasLikeInfo && (
-                      <div className="comment-detail-like-info">{renderLikeInfo(likeUsers)}</div>
-                    )}
+                    {hasLikeInfo && renderLikeInfo(likeUsers)}
                   </div>
 
                   <div className="comment-detail-list">
@@ -2420,17 +2418,6 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           overflow: hidden; /* 防止 Markdown 渲染后内容溢出 */
         }
 
-        .comment-detail-like-info {
-          margin-top: 10px;
-          background: #fff7e6;
-          border: 1px solid #ffe7ba;
-          border-radius: 10px;
-          padding: 8px 10px;
-          display: flex;
-          gap: 8px;
-          align-items: center;
-          color: #8c5a00;
-        }
 
         .comment-detail-like-icon {
           width: 16px;
