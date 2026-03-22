@@ -28,6 +28,7 @@ export interface CommunityComment {
   content: string;
   sender: string;
   senderID: string;
+  avatarUrl?: string;
   time: Date;
   postMessageID: string;
 }
@@ -139,6 +140,7 @@ function toComment(msg: any): CommunityComment | null {
     content: data.content || '',
     sender: msg.nick || msg.from || '未知',
     senderID: msg.from || '',
+    avatarUrl: msg.avatar || '',
     time: new Date((msg.time || 0) * 1000),
     postMessageID: data.postMessageID,
   };

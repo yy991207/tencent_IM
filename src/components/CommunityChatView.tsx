@@ -798,6 +798,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
               content,
               sender: loginUserInfo?.userName || loginUserInfo?.userId || '我',
               senderID: loginUserInfo?.userId || '',
+              avatarUrl: loginUserInfo?.avatarUrl || '',
               time: new Date(),
               postMessageID: postId,
             },
@@ -1538,8 +1539,19 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                 <div className="comment-detail-body">
                   <div className="comment-detail-post">
                     <div className="comment-detail-post-header">
-                      <div className="comment-detail-post-sender">{msg.sender}</div>
-                      <div className="comment-detail-post-time">{formatTime(msg.time)}</div>
+                      <div className="comment-detail-post-avatar">
+                        {msg.avatarUrl ? (
+                          <img src={msg.avatarUrl} alt="" />
+                        ) : (
+                          <div className="comment-detail-post-avatar-fallback">
+                            {msg.sender.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div className="comment-detail-post-meta">
+                        <div className="comment-detail-post-sender">{msg.sender}</div>
+                        <div className="comment-detail-post-time">{formatTime(msg.time)}</div>
+                      </div>
                     </div>
                     {/* 评论详情中的帖子正文：同样支持 Markdown 渲染 */}
                     <div className="comment-detail-post-content">
@@ -1558,17 +1570,28 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     ) : (
                       allComments.map((c) => (
                         <div key={c.id} className="comment-detail-item">
-                          <div className="comment-detail-item-header">
-                            <span className="comment-detail-item-sender">{c.sender}</span>
-                            <span className="comment-detail-item-time">{formatTime(c.time)}</span>
+                          <div className="comment-detail-item-avatar">
+                            {c.avatarUrl ? (
+                              <img src={c.avatarUrl} alt="" />
+                            ) : (
+                              <div className="comment-detail-item-avatar-fallback">
+                                {c.sender.charAt(0).toUpperCase()}
+                              </div>
+                            )}
                           </div>
-                          {/* 评论详情：支持 Markdown 渲染 */}
-                          <div className="comment-detail-item-content">
-                            <MdPreview
-                              modelValue={c.content}
-                              previewTheme="github"
-                              style={{ background: 'transparent', padding: 0 }}
-                            />
+                          <div className="comment-detail-item-body">
+                            <div className="comment-detail-item-header">
+                              <span className="comment-detail-item-sender">{c.sender}</span>
+                              <span className="comment-detail-item-time">{formatTime(c.time)}</span>
+                            </div>
+                            {/* 评论详情：支持 Markdown 渲染 */}
+                            <div className="comment-detail-item-content">
+                              <MdPreview
+                                modelValue={c.content}
+                                previewTheme="github"
+                                style={{ background: 'transparent', padding: 0 }}
+                              />
+                            </div>
                           </div>
                         </div>
                       ))
@@ -2394,9 +2417,42 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
 
         .comment-detail-post-header {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          margin-bottom: 8px;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .comment-detail-post-avatar {
+          flex-shrink: 0;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          overflow: hidden;
+          background: #e0e0e0;
+        }
+
+        .comment-detail-post-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .comment-detail-post-avatar-fallback {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          font-weight: 600;
+          color: #fff;
+          background: linear-gradient(135deg, #74b9ff, #0984e3);
+        }
+
+        .comment-detail-post-meta {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
         }
 
         .comment-detail-post-sender {
@@ -2446,10 +2502,48 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
           text-align: center;
         }
 
-        .comment-detail-item-header {
+        .comment-detail-item {
           display: flex;
           gap: 10px;
+          align-items: flex-start;
+        }
+
+        .comment-detail-item-avatar {
+          flex-shrink: 0;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          overflow: hidden;
+          background: #e0e0e0;
+        }
+
+        .comment-detail-item-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .comment-detail-item-avatar-fallback {
+          width: 100%;
+          height: 100%;
+          display: flex;
           align-items: center;
+          justify-content: center;
+          font-size: 15px;
+          font-weight: 600;
+          color: #fff;
+          background: linear-gradient(135deg, #74b9ff, #0984e3);
+        }
+
+        .comment-detail-item-body {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .comment-detail-item-header {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
           margin-bottom: 4px;
         }
 
@@ -2460,7 +2554,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         }
 
         .comment-detail-item-time {
-          font-size: 12px;
+          font-size: 11px;
           color: #999;
         }
 
